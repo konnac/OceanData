@@ -2,7 +2,7 @@
 #ifndef TxtFileUtil_H
 #define TxtFileUtil_H
 
-#include "WaterQuality.h" 
+#include "../object/WaterQuality.h" 
 
 //接口
 // 从 txt 文件读取水质数据到记录集
