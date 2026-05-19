@@ -1,0 +1,19 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "if (!(Test-Path 'output\\menu')) { New-Item -ItemType Directory -Path 'output\\menu' -Force | Out-Null }; gcc -Wall -Wextra -g3 -I. -Iobject -Imenu -Iutils -finput-charset=UTF-8 -fexec-charset=GBK menu/Sign.c menu/MainMenuAdmin.c menu/MainMenuGuest.c utils/SignUtil.c object/User.c utils/ExceptionUtil.c object/WaterQualityRecords.c utils/TxtFileUtil.c -lm -o output\\menu\\Sign.exe"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}
