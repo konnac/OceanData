@@ -1,11 +1,11 @@
-// WaterQuality.h
 #ifndef WATER_QUALITY_H
 #define WATER_QUALITY_H
 
-#include <stddef.h> // 使用 size_t 等标准类型
+#include <stddef.h>
 
-// 1. 单个水质记录实体
+// 单个水质记录实体
 typedef struct {
+    char datetime[20];      // 格式 "YYYY-MM-DD HH:MM:SS"
     float Temp;
     float Salinity;
     float pH;
@@ -14,29 +14,40 @@ typedef struct {
     float Air_temp;
 } WaterQualityRecord;
 
-// 2. 数据集实体（管理动态数组）
+// 数据集实体（动态数组）
 typedef struct {
-    int count;              // 当前记录数
-    int capacity;           // 数组容量
-    WaterQualityRecord *records; // 指向动态数组的指针
+    int count;
+    int capacity;
+    WaterQualityRecord *records;
 } WaterQualityRecords;
 
-// 3. 接口声明（数据集操作）
+// --- 基础操作 ---
 void WQ_Init(WaterQualityRecords *dataset, int initialCapacity);
 void WQ_Destroy(WaterQualityRecords *dataset);
 int  WQ_AddRecord(WaterQualityRecords *dataset, const WaterQualityRecord *record);
 const WaterQualityRecord* WQ_GetRecord(const WaterQualityRecords *dataset, int index);
+int  WQ_UpdateRecord(WaterQualityRecords *dataset, int index, const WaterQualityRecord *record);
+int  WQ_DeleteRecord(WaterQualityRecords *dataset, int index);                 // 单条删除
+int  WQ_DeleteRecords(WaterQualityRecords *dataset, int indices[], int count); // 批量删除
 
-// 4. 接口声明（文件操作）
-//读取文件
-int TxtUtil_LoadFromFile(const char *filename, WaterQualityRecords *records);
+// --- 排序与筛选 ---
+typedef enum { SORT_ASC, SORT_DESC } SortOrder;
+typedef enum { PARAM_TEMP, PARAM_SALINITY, PARAM_PH, PARAM_DO, PARAM_PRECIP, PARAM_AIRTEMP } ParamType;
+void WQ_Sort(WaterQualityRecords *dataset, ParamType param, SortOrder order);
+int  WQ_FilterByRange(const WaterQualityRecords *dataset, ParamType param, float min, float max, int **out_indices);
 
-//保存文件
-int TxtUtil_SaveToFile(const char *filename, const WaterQualityRecords *records);
+// --- 文件操作 ---
+int  TxtUtil_LoadFromFile(const char *filename, WaterQualityRecords *records);
+int  TxtUtil_SaveToFile(const char *filename, const WaterQualityRecords *records);
+int  BinUtil_SaveToFile(const char *filename, const WaterQualityRecords *records);
+int  BinUtil_LoadFromFile(const char *filename, WaterQualityRecords *records);
+void PerformanceCompare(const WaterQualityRecords *records);
 
-//修改数据
-int OperateUtil_UpdateRecord(const char *filename, int index, const WaterQualityRecord *record);
+// --- 备份与恢复 ---
+int  Backup_Backup(const WaterQualityRecords *records, const char *customName); // 自动生成时间戳文件名
+int  Backup_List(char backupList[][256], int maxCount);
+int  Backup_Restore(const char *backupFilename, WaterQualityRecords *records);
 
-//删除数据
-int OperateUtil_DeleteRecord(const char *filename, int index);
+// --- 辅助函数（参数合理性验证）---
+int  IsParamValid(ParamType type, float value);
 #endif

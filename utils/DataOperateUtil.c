@@ -7,7 +7,7 @@
 int OperateUtil_UpdateRecord(const char *filename, int index, const WaterQualityRecord *newRecord) { 
     if(!filename||!newRecord) return -1;
     WaterQualityRecords dataset;
-    WQ_Init(&dataset, 100);
+    WQ_Init(&dataset, 1000);
     if(TxtUtil_LoadFromFile(filename, &dataset) != 0){
         printf("出错了：好像读取不到文件('o_o), 要不去 %s 看看?\n",filename);
         WQ_Destroy(&dataset);
