@@ -109,6 +109,7 @@ void DawnHypoxiaWarning(const WaterQualityRecords *records){
     if (!records || records->count == 0)
         return;
     FILE *fp = fopen("../../data/warning_dawn.csv", "w");
+    if (!fp) return;
     fprintf(fp, "========== 日间水下缺氧提醒 ==========\n");
     fprintf(fp,"日期,凌晨DO均值(mg/L),预警等级,处理建议\n");
 
@@ -273,4 +274,8 @@ void RunAllStatistics(const WaterQualityRecords *records)
     CorrelationAnalysis(records);
     printf("所有统计分析已完成！结果均已保存至对应的CSV文件!\n");
 }
+
+
+
+
 
