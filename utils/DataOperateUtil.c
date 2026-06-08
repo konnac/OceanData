@@ -32,18 +32,6 @@ int OperateUtil_UpdateRecord(const char *filename, int index, const WaterQuality
     return 0;
 }
 
-//辅助函数：执行实际的单次删除逻辑(内部使用，不直接暴露给用户交互)
-//返回-1->失败，0->成功
-static int deleteRecordInternal(WaterQualityRecords *dataset, int index) { 
-    if(index < 0 || index >=dataset->count) return -1;
-    for (int i = index; i < dataset -> count - 1; i++)
-    {
-        dataset->records[i] = dataset->records[i + 1];
-    }
-    dataset->count--;
-    return 0;
-}
-
 //单次删除
 int OperateUtil_DeleteSingleRecord(const char *filename,int index) { 
     int indices[] = {index};
@@ -107,7 +95,7 @@ int OperateUtil_DeleteRecords(const char *filename, int indices[], int count, in
 
     //为了处理重复索引或者无效索引，先创建一个"删除标记数组"
     //下面这个变量markedForDeletion表示原数据集的第i条数据需要被删除。
-    int *markedForDeletion = (int *)malloc(dataset.count * sizeof(int));
+    int *markedForDeletion = (int *)calloc((size_t)dataset.count, sizeof(int));
     if (!markedForDeletion)
     {
         printf("错误：无法分配内存(O_O)\n");

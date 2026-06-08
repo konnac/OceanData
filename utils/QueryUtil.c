@@ -17,7 +17,7 @@ void DisplayPage(const WaterQualityRecords *dataset, int page, int rowsPerPage) 
     if (end > dataset->count) end = dataset->count;
     printf("\n===== 第 %d / %d 页 =====\n", page, totalPages);
     for (int i = start; i < end; i++) {
-        WaterQualityRecord *r = &dataset->records[i];
+        const WaterQualityRecord *r = &dataset->records[i];
         printf("%d: %s | 水温:%.2f 盐度:%.2f pH:%.2f DO:%.2f 降水:%.2f 气温:%.2f\n",
                i+1, r->DailyStats, r->Temp, r->Salinity, r->pH, r->DO, r->precipitation, r->Air_temp);
     }
@@ -27,9 +27,15 @@ void FilterAndDisplay(const WaterQualityRecords *dataset) {
     int paramChoice;
     float minVal, maxVal;
     printf("选择参数：1-水温 2-盐度 3-pH 4-DO 5-降水 6-气温: ");
-    scanf("%d", &paramChoice);
+    if (scanf("%d", &paramChoice) != 1 || paramChoice < 1 || paramChoice > 6) {
+        printf("参数选择无效。\n");
+        return;
+    }
     printf("输入范围（最小值 最大值）: ");
-    scanf("%f %f", &minVal, &maxVal);
+    if (scanf("%f %f", &minVal, &maxVal) != 2) {
+        printf("范围输入无效。\n");
+        return;
+    }
     ParamType param = (ParamType)(paramChoice - 1);
     int *indices = NULL;
     int found = WQ_FilterByRange(dataset, param, minVal, maxVal, &indices);
@@ -39,7 +45,7 @@ void FilterAndDisplay(const WaterQualityRecords *dataset) {
         printf("共找到 %d 条记录：\n", found);
         for (int i = 0; i < found; i++) {
             int idx = indices[i];
-            WaterQualityRecord *r = &dataset->records[idx];
+            const WaterQualityRecord *r = &dataset->records[idx];
             float val;
             switch (param) {
                 case PARAM_TEMP: val = r->Temp; break;
@@ -59,9 +65,15 @@ void FilterAndDisplay(const WaterQualityRecords *dataset) {
 void SortAndDisplay(WaterQualityRecords *dataset) {
     int paramChoice, orderChoice;
     printf("排序参数：1-水温 2-盐度 3-pH 4-DO 5-降水 6-气温: ");
-    scanf("%d", &paramChoice);
+    if (scanf("%d", &paramChoice) != 1 || paramChoice < 1 || paramChoice > 6) {
+        printf("参数选择无效。\n");
+        return;
+    }
     printf("排序方式：1-升序 2-降序: ");
-    scanf("%d", &orderChoice);
+    if (scanf("%d", &orderChoice) != 1 || (orderChoice != 1 && orderChoice != 2)) {
+        printf("排序方式无效。\n");
+        return;
+    }
     ParamType param = (ParamType)(paramChoice - 1);
     SortOrder order = (orderChoice == 1) ? SORT_ASC : SORT_DESC;
     WQ_Sort(dataset, param, order);

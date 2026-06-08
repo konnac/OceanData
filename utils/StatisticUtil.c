@@ -20,6 +20,34 @@ static void getDateFromDatetime(const char *datetime, char *dateBuf){
     dateBuf[10] = '\0';
 }
 
+static FILE *openReportOutput(const char *filename, char *usedPath, size_t usedPathSize) {
+    const char *dirs[] = {"data", "../data", "../../data", "."};
+    char path[260];
+    size_t count = sizeof(dirs) / sizeof(dirs[0]);
+
+    for (size_t i = 0; i < count; i++) {
+        if (strcmp(dirs[i], ".") == 0) {
+            snprintf(path, sizeof(path), "%s", filename);
+        } else {
+            snprintf(path, sizeof(path), "%s/%s", dirs[i], filename);
+        }
+
+        FILE *fp = fopen(path, "w");
+        if (fp) {
+            if (usedPath && usedPathSize > 0) {
+                strncpy(usedPath, path, usedPathSize - 1);
+                usedPath[usedPathSize - 1] = '\0';
+            }
+            return fp;
+        }
+    }
+
+    if (usedPath && usedPathSize > 0) {
+        usedPath[0] = '\0';
+    }
+    return NULL;
+}
+
 //计算指定参数的基本统计量
 void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
                     float *mean, float *max, float *min, float *variance, float *stddev) {
@@ -76,13 +104,14 @@ void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
 
 //生成所有参数的基本统计量报告
 void GenerateBasicStatsReport(const WaterQualityRecords *records) {
+    char outputPath[260] = "";
     if (!records || records->count == 0) {
         printf("无数据，无法生成统计报告。\n");
         return;
     }
-    FILE *fp = fopen("../../data/stat_report.csv", "w");
+    FILE *fp = openReportOutput("stat_report.csv", outputPath, sizeof(outputPath));
     if (!fp) {
-        printf("无法创建 ../../data/stat_report.csv\n");
+        printf("无法创建 stat_report.csv\n");
         return;
     }
     fprintf(fp, "========== 水质参数基本统计量 ==========\n");
@@ -102,14 +131,18 @@ void GenerateBasicStatsReport(const WaterQualityRecords *records) {
         fprintf(fp, "  标准差: %.4f\n\n", stddev);
     }
     fclose(fp);
-    printf("基本统计量已写入 stat_report.txt\n");
+    printf("基本统计量已写入 %s\n", outputPath);
 }
 
 void DawnHypoxiaWarning(const WaterQualityRecords *records){
+    char outputPath[260] = "";
     if (!records || records->count == 0)
         return;
-    FILE *fp = fopen("../../data/warning_dawn.csv", "w");
-    if (!fp) return;
+    FILE *fp = openReportOutput("warning_dawn.csv", outputPath, sizeof(outputPath));
+    if (!fp) {
+        printf("无法创建 warning_dawn.csv\n");
+        return;
+    }
     fprintf(fp, "========== 日间水下缺氧提醒 ==========\n");
     fprintf(fp,"日期,凌晨DO均值(mg/L),预警等级,处理建议\n");
 
@@ -152,14 +185,18 @@ void DawnHypoxiaWarning(const WaterQualityRecords *records){
         else if (avgDO < 4.0) fprintf(fp, "%s,%.4f,亚缺氧预警,建议开启底部增氧机！\n", currentDate, avgDO);
     }
     fclose(fp);
-    printf("凌晨水下缺氧提醒已写入 warning_dawn.csv\n");
+    printf("凌晨水下缺氧提醒已写入 %s\n", outputPath);
 }
 
 //盐度突变预警
 void SalinityShockWarning(const WaterQualityRecords *records){
+    char outputPath[260] = "";
     if (!records || records->count <2 )    return;
-    FILE *fp = fopen("../../data/warning_salinity.csv", "w");
-    if (!fp) return;
+    FILE *fp = openReportOutput("warning_salinity.csv", outputPath, sizeof(outputPath));
+    if (!fp) {
+        printf("无法创建 warning_salinity.csv\n");
+        return;
+    }
 
     fprintf(fp, "========== 盐度突变提醒 ==========\n");
     fprintf(fp, "时间,突变类型,盐度(PSU),处理建议\n");
@@ -181,7 +218,7 @@ void SalinityShockWarning(const WaterQualityRecords *records){
         }
     }
     fclose(fp);
-    printf("盐度突变提醒已写入 warning_salinity.csv\n");
+    printf("盐度突变提醒已写入 %s\n", outputPath);
 }
 
 //皮尔逊相关系数
@@ -203,6 +240,7 @@ static double pearsonCount(const double *x, const double *y, int n){
 //相关性分析(保存为CSV矩阵)
 void CorrelationAnalysis(const WaterQualityRecords *records)
 {
+    char outputPath[260] = "";
     if (!records || records->count == 0)
     {
         printf("数据为空，无法进行相关性分析！\n");
@@ -215,7 +253,7 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
     double *dos = (double *)malloc(n * sizeof(double));
     double *precips = (double *)malloc(n * sizeof(double));
     double *airTemps = (double *)malloc(n * sizeof(double));
-    if (!temps || !salinities || !phs || !dos || precips || !airTemps)
+    if (!temps || !salinities || !phs || !dos || !precips || !airTemps)
     {
         printf("内存分配失败！\n");
         goto cleanup;
@@ -232,7 +270,7 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
     }
     double *param[6] = {temps, salinities, phs, dos, precips, airTemps};
     const char *name[6] = {"温度", "盐度", "pH", "溶解氧", "降水量", "空气温度"};
-    FILE *fp = fopen("../../data/correlation_matrix.csv", "w");
+    FILE *fp = openReportOutput("correlation_matrix.csv", outputPath, sizeof(outputPath));
     if (!fp)
     {
         printf("无法创建correlation_matrix.csv\n");
@@ -262,7 +300,9 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
     free(dos);
     free(precips);
     free(airTemps);
-    printf("相关性矩阵已保存为 correlation_matrix.csv\n");
+    if (outputPath[0] != '\0') {
+        printf("相关性矩阵已保存为 %s\n", outputPath);
+    }
 }
     
 //一键执行所以统计分析

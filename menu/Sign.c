@@ -9,6 +9,40 @@
 #include "WaterQuality.h"
 #include "TxtFileUtil.h"
 
+static const char *DATA_FILE_CANDIDATES[] = {
+    "data/WaterQuilityRecords.csv",
+    "../data/WaterQuilityRecords.csv",
+    "../../data/WaterQuilityRecords.csv",
+    "WaterQuilityRecords.csv"
+};
+
+static int canOpenForRead(const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        return 0;
+    }
+    fclose(fp);
+    return 1;
+}
+
+static void loadInitialData(void) {
+    size_t count = sizeof(DATA_FILE_CANDIDATES) / sizeof(DATA_FILE_CANDIDATES[0]);
+
+    WQ_Init(&g_records, 1000);
+    for (size_t i = 0; i < count; i++) {
+        if (!canOpenForRead(DATA_FILE_CANDIDATES[i])) {
+            continue;
+        }
+        if (TxtUtil_LoadFromFile(DATA_FILE_CANDIDATES[i], &g_records) == 0) {
+            printf("[提示] 已加载 %d 条水质记录：%s\n", g_records.count, DATA_FILE_CANDIDATES[i]);
+            return;
+        }
+        g_records.count = 0;
+    }
+
+    printf("[警告] 未能加载默认水质数据文件，进入菜单后可在“数据基础操作”中重新加载。\n");
+}
+
 int main(){
     int role;
     char username[20], password[20];
@@ -32,8 +66,7 @@ int main(){
         // 调用工具类验证
         if (verifyUser(username, password, &role)) {
             //初始化数据文件
-            WQ_Init(&g_records, 100);
-            TxtUtil_LoadFromFile("WaterQuilityRecords.csv", &g_records);
+            loadInitialData();
             // 登录成功
             printf("\n登录成功！");
             if (role == ROLE_ADMIN) {
@@ -57,6 +90,8 @@ int main(){
             }
         }
     }
+
+    WQ_Destroy(&g_records);
     
     return 0;
 }
