@@ -5,7 +5,7 @@
  * 本模块实现了基于最小二乘法的线性回归预测模型，用于探究海水养殖水质参数间的线性关联规律。
  * 主要功能包括：
  * - 线性回归拟合（计算斜率和截距）
- * - 决定系数(R²)评估
+ * - 决定系数(R2)评估
  * - 留出法评估（基于均方根误差RMSE）
  * - 多因子影响对比分析（气温、水温、pH值、盐度与溶解氧的关系）
  * 
@@ -32,12 +32,12 @@ static int isValidDouble(double value) {
  * @brief 基于最小二乘法进行线性回归拟合
  * 
  * 计算自变量x和因变量y之间的线性回归模型，得到回归方程 y = slope * x + intercept
- * 同时计算决定系数R²评估拟合效果。
+ * 同时计算决定系数R2评估拟合效果。
  * 
  * @param x 自变量数组
  * @param y 因变量数组
  * @param n 数据点数量
- * @return LinearModel 包含斜率、截距和R²值的线性模型
+ * @return LinearModel 包含斜率、截距和R2值的线性模型
  */
 LinearModel linearRegression(double* x, double* y, int n) {
     LinearModel model;
@@ -110,17 +110,17 @@ double predict(LinearModel model, double x) {
 }
 
 /**
- * @brief 计算决定系数R²
+ * @brief 计算决定系数R2
  * 
- * R²值越接近1，说明模型对历史数据的拟合效果越好，预测可靠性越高。
+ * R2值越接近1，说明模型对历史数据的拟合效果越好，预测可靠性越高。
  * 
- * 计算公式: R² = 1 - Σ(y_i - ŷ_i)² / Σ(y_i - ȳ)²
+ * 计算公式: R2 = 1 - Σ(y_i - ŷ_i)² / Σ(y_i - ȳ)²
  * 其中: y_i为真实值, ŷ_i为预测值, ȳ为真实值的均值
  * 
  * @param y_true 真实值数组
  * @param y_pred 预测值数组
  * @param n 数据点数量
- * @return double 决定系数R²值
+ * @return double 决定系数R2值
  */
 double calculateRSquared(double* y_true, double* y_pred, int n) {
     if (n < 2) return 0.0;
@@ -329,7 +329,7 @@ LinearModel analyzeSalinityDO(const WaterQualityRecords* records) {
  * @brief 对比分析各环境因子对溶解氧(DO)的影响程度
  * 
  * 分别建立气温、水温、pH值、盐度与DO的单因素线性回归模型，
- * 计算各自的R²值并进行排序，量化判断哪个环境因子对溶解氧的影响程度最大。
+ * 计算各自的R2值并进行排序，量化判断哪个环境因子对溶解氧的影响程度最大。
  * 
  * @param records 水质数据集
  */
@@ -342,19 +342,19 @@ void compareFactorsImpact(const WaterQualityRecords* records) {
     printf("=== 多因子影响对比分析结果 ===\n");
     printf("1. 气温(Air_temp)与溶解氧(DO):\n");
     printf("   回归方程: DO = %.4f * Air_temp + %.4f\n", model_airtemp.slope, model_airtemp.intercept);
-    printf("   R²值: %.4f\n\n", model_airtemp.r_squared);
+    printf("   R2值: %.4f\n\n", model_airtemp.r_squared);
 
     printf("2. 水温(Temp)与溶解氧(DO):\n");
     printf("   回归方程: DO = %.4f * Temp + %.4f\n", model_temp.slope, model_temp.intercept);
-    printf("   R²值: %.4f\n\n", model_temp.r_squared);
+    printf("   R2值: %.4f\n\n", model_temp.r_squared);
 
     printf("3. pH值与溶解氧(DO):\n");
     printf("   回归方程: DO = %.4f * pH + %.4f\n", model_ph.slope, model_ph.intercept);
-    printf("   R²值: %.4f\n\n", model_ph.r_squared);
+    printf("   R2值: %.4f\n\n", model_ph.r_squared);
 
     printf("4. 盐度(Salinity)与溶解氧(DO):\n");
     printf("   回归方程: DO = %.4f * Salinity + %.4f\n", model_salinity.slope, model_salinity.intercept);
-    printf("   R²值: %.4f\n\n", model_salinity.r_squared);
+    printf("   R2值: %.4f\n\n", model_salinity.r_squared);
 
     double max_r2 = model_airtemp.r_squared;
     const char* max_factor = "气温(Air_temp)";
@@ -373,7 +373,7 @@ void compareFactorsImpact(const WaterQualityRecords* records) {
     }
 
     printf("=== 影响程度对比结论 ===\n");
-    printf("各因子对溶解氧(DO)的影响程度排序(R²值从高到低):\n");
+    printf("各因子对溶解氧(DO)的影响程度排序(R2值从高到低):\n");
     
     if (model_temp.r_squared >= model_airtemp.r_squared && model_temp.r_squared >= model_ph.r_squared && model_temp.r_squared >= model_salinity.r_squared) {
         printf("1. %s: %.4f\n", "水温(Temp)", model_temp.r_squared);
@@ -437,5 +437,5 @@ void compareFactorsImpact(const WaterQualityRecords* records) {
         }
     }
 
-    printf("\n结论: %s对溶解氧(DO)的影响程度最大，R²值为%.4f\n", max_factor, max_r2);
+    printf("\n结论: %s对溶解氧(DO)的影响程度最大，R2值为%.4f\n", max_factor, max_r2);
 }

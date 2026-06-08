@@ -18,12 +18,12 @@
 /**
  * @brief 线性回归模型结构体
  * 
- * 存储线性回归拟合得到的参数，包括斜率、截距和决定系数R²。
+ * 存储线性回归拟合得到的参数，包括斜率、截距和决定系数R2。
  */
 typedef struct {
     double slope;          /**< 直线斜率（回归系数） */
     double intercept;      /**< 直线截距 */
-    double r_squared;      /**< 决定系数R²，评估拟合效果 */
+    double r_squared;      /**< 决定系数R2，评估拟合效果 */
 } LinearModel;
 
 /**
@@ -32,7 +32,7 @@ typedef struct {
  * @param x 自变量数组
  * @param y 因变量数组
  * @param n 数据点数量
- * @return LinearModel 包含斜率、截距和R²值的线性模型
+ * @return LinearModel 包含斜率、截距和R2值的线性模型
  */
 LinearModel linearRegression(double* x, double* y, int n);
 
@@ -46,12 +46,12 @@ LinearModel linearRegression(double* x, double* y, int n);
 double predict(LinearModel model, double x);
 
 /**
- * @brief 计算决定系数R²
+ * @brief 计算决定系数R2
  * 
  * @param y_true 真实值数组
  * @param y_pred 预测值数组
  * @param n 数据点数量
- * @return double 决定系数R²值
+ * @return double 决定系数R2值
  */
 double calculateRSquared(double* y_true, double* y_pred, int n);
 
