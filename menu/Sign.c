@@ -9,6 +9,7 @@
 #include "WaterQuality.h"
 #include "TxtFileUtil.h"
 
+//存储水质记录的文件路径
 static const char *DATA_FILE_CANDIDATES[] = {
     "data/WaterQuilityRecords.csv",
     "../data/WaterQuilityRecords.csv",
@@ -16,6 +17,7 @@ static const char *DATA_FILE_CANDIDATES[] = {
     "WaterQuilityRecords.csv"
 };
 
+//检查文件是否可以读取
 static int canOpenForRead(const char *path) {
     FILE *fp = fopen(path, "r");
     if (!fp) {
@@ -25,18 +27,25 @@ static int canOpenForRead(const char *path) {
     return 1;
 }
 
+//加载初始数据
 static void loadInitialData(void) {
+    //计算数组元素个数
     size_t count = sizeof(DATA_FILE_CANDIDATES) / sizeof(DATA_FILE_CANDIDATES[0]);
 
+    //初始化全局数据结构，预分配1000条记录的内存空间
     WQ_Init(&g_records, 1000);
+    //遍历4个候选路径，找到第一个可用的数据文件并加载
     for (size_t i = 0; i < count; i++) {
+        //打不开,继续下一个
         if (!canOpenForRead(DATA_FILE_CANDIDATES[i])) {
             continue;
         }
+        //如果文件可以读取，尝试加载数据
         if (TxtUtil_LoadFromFile(DATA_FILE_CANDIDATES[i], &g_records) == 0) {
             printf("[提示] 已加载 %d 条水质记录：%s\n", g_records.count, DATA_FILE_CANDIDATES[i]);
             return;
         }
+        //清空之前可能部分加载的数据
         g_records.count = 0;
     }
 
