@@ -32,10 +32,38 @@
 static char g_current_data_file[MAX_PATH_LEN] = "";
 /** @brief 滤波前各参数标准差（水温、盐度、pH、溶解氧） */
 static float g_last_std_before[4] = {0};
-/** @brief 滤波后各参数标准差（水温、盐度、pH、溶解氧） */
+/** @brief 最佳滤波的各参数标准差（水温、盐度、pH、溶解氧） */
 static float g_last_std_after[4] = {0};
-/** @brief 上次使用的移动平均窗口大小 */
+/** @brief 最佳窗口大小 */
 static int g_last_window_size = 0;
+
+/**
+ * @brief 清空上次的滤波分析结果
+ */
+static void clear_last_filter_analysis(void) {
+    memset(g_last_std_before, 0, sizeof(g_last_std_before));
+    memset(g_last_std_after, 0, sizeof(g_last_std_after));
+    g_last_window_size = 0;
+}
+
+/**
+ * @brief 保存本次滤波分析前后的标准差及窗口大小
+ *
+ * 将当前滤波分析的结果（滤波前标准差、滤波后标准差、使用的窗口大小）
+ * 存储到静态全局变量中
+ *
+ * @param std_before  滤波前各参数标准差数组，长度为4，顺序为：
+ *                     [水温, 盐度, pH, 溶解氧]
+ * @param std_after   滤波后各参数标准差数组，长度与顺序同上
+ * @param window_size 本次移动平均滤波使用的窗口大小
+ */
+static void store_last_filter_analysis(const float std_before[4],
+                                       const float std_after[4],
+                                       int window_size) {
+    memcpy(g_last_std_before, std_before, sizeof(g_last_std_before));
+    memcpy(g_last_std_after, std_after, sizeof(g_last_std_after));
+    g_last_window_size = window_size;
+}
 
 /**
  * @brief 候选数据文件路径列表
@@ -268,6 +296,7 @@ static int loadDefaultData(void) {
     //给当前加载的数据文件赋值
     strncpy(g_current_data_file, path, sizeof(g_current_data_file) - 1);
     g_current_data_file[sizeof(g_current_data_file) - 1] = '\0';
+    clear_last_filter_analysis();
     printf("[提示] 已加载 %d 条记录：%s\n", g_records.count, g_current_data_file);
     return 1;
 }
@@ -468,6 +497,7 @@ static void addRecord(void) {
         return;
     }
     if (WQ_AddRecord(&g_records, &record) == 0) {
+        clear_last_filter_analysis();
         printf("[提示] 新增成功，当前记录数：%d\n", g_records.count);
         saveCurrentData();
     } else {
@@ -503,6 +533,7 @@ static void updateRecord(void) {
         return;
     }
     if (WQ_UpdateRecord(&g_records, index, &record) == 0) {
+        clear_last_filter_analysis();
         printf("[提示] 修改成功。\n");
         saveCurrentData();
     } else {
@@ -537,6 +568,7 @@ static void deleteSingleRecord(void) {
     }
 
     if (WQ_DeleteRecord(&g_records, index) == 0) {
+        clear_last_filter_analysis();
         printf("[提示] 删除成功，当前记录数：%d\n", g_records.count);
         saveCurrentData();
     } else {
@@ -599,6 +631,7 @@ static void deleteBatchRecords(void) {
     }
 
     if (WQ_DeleteRecords(&g_records, indices, count) == 0) {
+        clear_last_filter_analysis();
         printf("[提示] 批量删除完成，当前记录数：%d\n", g_records.count);
         saveCurrentData();
     } else {
@@ -626,6 +659,7 @@ static void sortData(void) {
         return;
     }
     SortAndDisplay(&g_records);
+    clear_last_filter_analysis();
     clearInputBuffer();
     if (confirmAction("是否保存排序后的数据顺序？(y/N): ")) {
         saveCurrentData();
@@ -724,6 +758,7 @@ static void handle_abnormal_data(void) {
     }
 
     summary = process_abnormal_data(&g_records);
+    clear_last_filter_analysis();
 
     printf("\n========== 异常数据处理完成 ==========\n");
     printf("删除异常记录数: %d\n", summary.deleted);
@@ -748,6 +783,7 @@ static void handle_missing_values(void) {
     }
 
     summary = process_missing_values(&g_records);
+    clear_last_filter_analysis();
 
     printf("\n========== 缺失值处理完成 ==========\n");
     printf("填充缺失值数量: %d\n", summary.filled);
@@ -868,6 +904,10 @@ static void apply_moving_average(void) {
             best_window_idx = w;
         }
     }
+    // 保存最佳窗口的参数
+    store_last_filter_analysis(std_original,
+                               std_results[best_window_idx],
+                               window_sizes[best_window_idx]);
     
     printf("\n【结论】\n");
     printf("最佳滤波窗口: %d\n", window_sizes[best_window_idx]);
@@ -917,35 +957,23 @@ static void save_data_summary(void) {
 static void save_analysis_report(void) {
     DataSummary summary;
     int windowSizes[1];
-    float emptyBefore[4] = {0};
 
     if (!ensureDataLoaded()) {
         return;
     }
+    if (g_last_window_size <= 0) {
+        printf("\n[提示] 请先执行 [4] 移动平均滤波，再保存详细分析报告。\n");
+        return;
+    }
 
     summary = check_all_abnormal(&g_records);
-    windowSizes[0] = g_last_window_size > 0 ? g_last_window_size : 7;
-
-    if (g_last_window_size > 0) {
-        write_analysis_report("analysis_report.txt",
-                              &summary,
-                              g_last_std_before,
-                              g_last_std_after,
-                              windowSizes,
-                              1);
-    } else {
-        float currentStd[4];
-        currentStd[0] = calculate_std(&g_records, 0);
-        currentStd[1] = calculate_std(&g_records, 1);
-        currentStd[2] = calculate_std(&g_records, 2);
-        currentStd[3] = calculate_std(&g_records, 3);
-        write_analysis_report("analysis_report.txt",
-                              &summary,
-                              emptyBefore,
-                              currentStd,
-                              windowSizes,
-                              1);
-    }
+    windowSizes[0] = g_last_window_size;
+    write_analysis_report("analysis_report.txt",
+                          &summary,
+                          g_last_std_before,
+                          g_last_std_after,
+                          windowSizes,
+                          1);
 
     printf("\n[提示] 详细分析报告已保存到 analysis_report.txt\n");
 }
@@ -1065,11 +1093,11 @@ static void printModelResult(int factorChoice) {
  * @brief 根据因子值预测溶解氧
  */
 static void predictDOValue(void) {
-    int factorChoice; //
-    float xValue;
-    const char *factorName;
-    LinearModel model;
-    double result;
+    int factorChoice; // 因子编号
+    float xValue; // 自变量x值
+    const char *factorName; // 因子名称
+    LinearModel model; // 线性回归模型
+    double result; // 预测结果
 
     printf("\n预测因子：1-气温 2-水温 3-pH 4-盐度\n");
     if (!readInt("请选择预测因子: ", &factorChoice) || factorChoice < 1 || factorChoice > 4) {
@@ -1080,7 +1108,9 @@ static void predictDOValue(void) {
         return;
     }
 
+    //获取线性回归模型
     model = modelByChoice(factorChoice, &factorName);
+    //预测
     result = predict(model, xValue);
     printf("[结果] 当%s为 %.4f 时，预测溶解氧 DO = %.4f mg/L\n",
            factorName, xValue, result);
@@ -1303,6 +1333,7 @@ static void restoreBackup(void) {
         WQ_Init(&g_records, 1000);
     }
     if (Backup_Restore(backupList[choice - 1], &g_records) == 0) {
+        clear_last_filter_analysis();
         if (confirmAction("是否将恢复后的数据保存为当前主数据文件？(y/N): ")) {
             saveCurrentData();
         }

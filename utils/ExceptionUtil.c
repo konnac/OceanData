@@ -151,23 +151,26 @@ float mean_approximation(WaterQualityRecords *dataset, int record_idx, int param
     int found_prev = 0; // 前向找到的有效值
     int found_next = 0; // 后向找到的有效值
     
-    // 向前搜索：从 record_idx - 1 开始往前，最多搜索 window_size 条记录，只取第一个有效值
-    for (int i = record_idx - 1; i >= 0 && i >= record_idx - window_size; i--) {
-        float value = get_param_value(&dataset->records[i], param_type);
-        if (!is_abnormal(value, param_type) && !is_missing(value)) {
-            prev_val = value;
+    // 向前搜索, 直接取前第 record_idx - window_size 个位置
+    int prev_idx = record_idx - window_size;
+    // 索引越界处理
+    if (prev_idx >= 0) {
+        float val = get_param_value(&dataset->records[prev_idx], param_type);
+        if (!is_abnormal(val, param_type) && !is_missing(val)) {
+            prev_val = val;
             found_prev = 1;
-            break;
         }
     }
+
     
-    // 向后搜索：从 record_idx + 1 开始往后，最多搜索 window_size 条记录，只取第一个有效值
-    for (int i = record_idx + 1; i < dataset->count && i <= record_idx + window_size; i++) {
-        float value = get_param_value(&dataset->records[i], param_type);
-        if (!is_abnormal(value, param_type) && !is_missing(value)) {
-            next_val = value;
+    // 向后搜索. 直接取后第 record_idx - window_size 个位置
+    int next_idx = record_idx + window_size;
+    // 判断索引是否越界
+    if (next_idx < dataset->count) {
+        float val = get_param_value(&dataset->records[next_idx], param_type);
+        if (!is_abnormal(val, param_type) && !is_missing(val)) {
+            next_val = val;
             found_next = 1;
-            break;
         }
     }
     // - 若两个方向都有值：取两者平均
@@ -181,6 +184,7 @@ float mean_approximation(WaterQualityRecords *dataset, int record_idx, int param
     } else if (found_next) {
         return next_val;
     } else {
+        // 使用全局均值
         return calculate_column_mean(dataset, param_type);
     }
 }
@@ -194,6 +198,7 @@ float mean_approximation(WaterQualityRecords *dataset, int record_idx, int param
 void fill_abnormal_with_mean(WaterQualityRecords *dataset, int record_index) {
     WaterQualityRecord *record = &dataset->records[record_index];
     
+    // 遍历所有参数, 使用均值逼近
     if (is_abnormal(record->Temp, 0)) {
         record->Temp = mean_approximation(dataset, record_index, 0);
     }
