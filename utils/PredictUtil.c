@@ -30,7 +30,7 @@ static int isValidDouble(double value) {
 
 /**
  * @brief 基于最小二乘法进行线性回归拟合
- * 
+ * slope = (Σ(x_i·y_i) - n·x̄·ȳ) / (Σ(x_i²) - n·x̄²)
  * 计算自变量x和因变量y之间的线性回归模型，得到回归方程 y = slope * x + intercept
  * 同时计算决定系数R2评估拟合效果。
  * 
@@ -67,28 +67,32 @@ LinearModel linearRegression(double* x, double* y, int n) {
         return model;
     }
 
-    double mean_x = sum_x / valid_count;
-    double mean_y = sum_y / valid_count;
+    double mean_x = sum_x / valid_count; // x平均值
+    double mean_y = sum_y / valid_count; // y平均值
 
-    double numerator = sum_xy - sum_x * mean_y;
-    double denominator = sum_x2 - sum_x * mean_x;
+    double numerator = sum_xy - sum_x * mean_y; // 分子
+    double denominator = sum_x2 - sum_x * mean_x; // 分母
 
+    // 绝对值小于阈值,认为无效
     if (fabs(denominator) < 1e-10) {
         return model;
     }
 
-    model.slope = numerator / denominator;
-    model.intercept = mean_y - model.slope * mean_x;
+    model.slope = numerator / denominator; //计算斜率
+    model.intercept = mean_y - model.slope * mean_x; //计算截距
 
+    // 分子是总平方和 和 分母是残差平方和
     double ss_tot = 0.0, ss_res = 0.0;
     for (int i = 0; i < n; i++) {
         if (isValidDouble(x[i]) && isValidDouble(y[i])) {
+            //计算出 y^
             double pred = model.slope * x[i] + model.intercept;
-            ss_res += (y[i] - pred) * (y[i] - pred);
-            ss_tot += (y[i] - mean_y) * (y[i] - mean_y);
+            ss_res += (y[i] - pred) * (y[i] - pred); //分子
+            ss_tot += (y[i] - mean_y) * (y[i] - mean_y); //分母
         }
     }
 
+    // 计算决定系数R2
     if (ss_tot > 1e-10) {
         model.r_squared = 1.0 - ss_res / ss_tot;
     }
@@ -260,10 +264,12 @@ static LinearModel analyzeFactorDO(const WaterQualityRecords* records, int facto
     int valid_count = 0;
 
     for (int i = 0; i < records->count; i++) {
+        // 获取对应记录
         const WaterQualityRecord* record = WQ_GetRecord(records, i);
         if (!record) continue;
 
         double factor_value;
+        // 根据因子类型获取对应数据
         switch (factor_type) {
             case 0: factor_value = (double)record->Air_temp; break;
             case 1: factor_value = (double)record->Temp; break;
@@ -272,6 +278,7 @@ static LinearModel analyzeFactorDO(const WaterQualityRecords* records, int facto
             default: factor_value = 0.0;
         }
 
+        //加入到x y数组中
         if (isValidDouble(factor_value) && isValidDouble((double)record->DO)) {
             x[valid_count] = factor_value;
             y[valid_count] = (double)record->DO;
@@ -279,6 +286,7 @@ static LinearModel analyzeFactorDO(const WaterQualityRecords* records, int facto
         }
     }
 
+    // 获取线性回归模型
     LinearModel model = linearRegression(x, y, valid_count);
     free(x);
     free(y);
@@ -334,108 +342,46 @@ LinearModel analyzeSalinityDO(const WaterQualityRecords* records) {
  * @param records 水质数据集
  */
 void compareFactorsImpact(const WaterQualityRecords* records) {
-    LinearModel model_airtemp = analyzeAirTempDO(records);
-    LinearModel model_temp = analyzeTempDO(records);
-    LinearModel model_ph = analyzePhDO(records);
-    LinearModel model_salinity = analyzeSalinityDO(records);
+    typedef struct {
+        const char* name;
+        const char* var_name;
+        LinearModel model;
+    } FactorResult;
+
+    // 初始化
+    FactorResult factors[] = {
+        {"气温(Air_temp)", "Air_temp", analyzeAirTempDO(records)},
+        {"水温(Temp)", "Temp", analyzeTempDO(records)},
+        {"pH值", "pH", analyzePhDO(records)},
+        {"盐度(Salinity)", "Salinity", analyzeSalinityDO(records)}
+    };
+    const int factor_count = sizeof(factors) / sizeof(factors[0]);
 
     printf("=== 多因子影响对比分析结果 ===\n");
-    printf("1. 气温(Air_temp)与溶解氧(DO):\n");
-    printf("   回归方程: DO = %.4f * Air_temp + %.4f\n", model_airtemp.slope, model_airtemp.intercept);
-    printf("   R2值: %.4f\n\n", model_airtemp.r_squared);
-
-    printf("2. 水温(Temp)与溶解氧(DO):\n");
-    printf("   回归方程: DO = %.4f * Temp + %.4f\n", model_temp.slope, model_temp.intercept);
-    printf("   R2值: %.4f\n\n", model_temp.r_squared);
-
-    printf("3. pH值与溶解氧(DO):\n");
-    printf("   回归方程: DO = %.4f * pH + %.4f\n", model_ph.slope, model_ph.intercept);
-    printf("   R2值: %.4f\n\n", model_ph.r_squared);
-
-    printf("4. 盐度(Salinity)与溶解氧(DO):\n");
-    printf("   回归方程: DO = %.4f * Salinity + %.4f\n", model_salinity.slope, model_salinity.intercept);
-    printf("   R2值: %.4f\n\n", model_salinity.r_squared);
-
-    double max_r2 = model_airtemp.r_squared;
-    const char* max_factor = "气温(Air_temp)";
-    
-    if (model_temp.r_squared > max_r2) {
-        max_r2 = model_temp.r_squared;
-        max_factor = "水温(Temp)";
+    for (int i = 0; i < factor_count; i++) {
+        printf("%d. %s与溶解氧(DO):\n", i + 1, factors[i].name);
+        printf("   回归方程: DO = %.4f * %s + %.4f\n", 
+               factors[i].model.slope, factors[i].var_name, factors[i].model.intercept);
+        printf("   R2值: %.4f\n\n", factors[i].model.r_squared);
     }
-    if (model_ph.r_squared > max_r2) {
-        max_r2 = model_ph.r_squared;
-        max_factor = "pH值";
-    }
-    if (model_salinity.r_squared > max_r2) {
-        max_r2 = model_salinity.r_squared;
-        max_factor = "盐度(Salinity)";
+
+    // 冒泡排序 降序
+    for (int i = 0; i < factor_count - 1; i++) {
+        for (int j = 0; j < factor_count - 1 - i; j++) {
+            if (factors[j].model.r_squared < factors[j + 1].model.r_squared) {
+                FactorResult temp = factors[j];
+                factors[j] = factors[j + 1];
+                factors[j + 1] = temp;
+            }
+        }
     }
 
     printf("=== 影响程度对比结论 ===\n");
     printf("各因子对溶解氧(DO)的影响程度排序(R2值从高到低):\n");
-    
-    if (model_temp.r_squared >= model_airtemp.r_squared && model_temp.r_squared >= model_ph.r_squared && model_temp.r_squared >= model_salinity.r_squared) {
-        printf("1. %s: %.4f\n", "水温(Temp)", model_temp.r_squared);
-        if (model_airtemp.r_squared >= model_ph.r_squared && model_airtemp.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "气温(Air_temp)", model_airtemp.r_squared);
-            printf("3. %s: %.4f\n", model_ph.r_squared >= model_salinity.r_squared ? "pH值" : "盐度(Salinity)", model_ph.r_squared >= model_salinity.r_squared ? model_ph.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_ph.r_squared < model_salinity.r_squared ? "pH值" : "盐度(Salinity)", model_ph.r_squared < model_salinity.r_squared ? model_ph.r_squared : model_salinity.r_squared);
-        } else if (model_ph.r_squared >= model_airtemp.r_squared && model_ph.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "pH值", model_ph.r_squared);
-            printf("3. %s: %.4f\n", model_airtemp.r_squared >= model_salinity.r_squared ? "气温(Air_temp)" : "盐度(Salinity)", model_airtemp.r_squared >= model_salinity.r_squared ? model_airtemp.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_airtemp.r_squared < model_salinity.r_squared ? "气温(Air_temp)" : "盐度(Salinity)", model_airtemp.r_squared < model_salinity.r_squared ? model_airtemp.r_squared : model_salinity.r_squared);
-        } else {
-            printf("2. %s: %.4f\n", "盐度(Salinity)", model_salinity.r_squared);
-            printf("3. %s: %.4f\n", model_airtemp.r_squared >= model_ph.r_squared ? "气温(Air_temp)" : "pH值", model_airtemp.r_squared >= model_ph.r_squared ? model_airtemp.r_squared : model_ph.r_squared);
-            printf("4. %s: %.4f\n", model_airtemp.r_squared < model_ph.r_squared ? "气温(Air_temp)" : "pH值", model_airtemp.r_squared < model_ph.r_squared ? model_airtemp.r_squared : model_ph.r_squared);
-        }
-    } else if (model_airtemp.r_squared >= model_temp.r_squared && model_airtemp.r_squared >= model_ph.r_squared && model_airtemp.r_squared >= model_salinity.r_squared) {
-        printf("1. %s: %.4f\n", "气温(Air_temp)", model_airtemp.r_squared);
-        if (model_temp.r_squared >= model_ph.r_squared && model_temp.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "水温(Temp)", model_temp.r_squared);
-            printf("3. %s: %.4f\n", model_ph.r_squared >= model_salinity.r_squared ? "pH值" : "盐度(Salinity)", model_ph.r_squared >= model_salinity.r_squared ? model_ph.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_ph.r_squared < model_salinity.r_squared ? "pH值" : "盐度(Salinity)", model_ph.r_squared < model_salinity.r_squared ? model_ph.r_squared : model_salinity.r_squared);
-        } else if (model_ph.r_squared >= model_temp.r_squared && model_ph.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "pH值", model_ph.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_salinity.r_squared ? "水温(Temp)" : "盐度(Salinity)", model_temp.r_squared >= model_salinity.r_squared ? model_temp.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_salinity.r_squared ? "水温(Temp)" : "盐度(Salinity)", model_temp.r_squared < model_salinity.r_squared ? model_temp.r_squared : model_salinity.r_squared);
-        } else {
-            printf("2. %s: %.4f\n", "盐度(Salinity)", model_salinity.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_ph.r_squared ? "水温(Temp)" : "pH值", model_temp.r_squared >= model_ph.r_squared ? model_temp.r_squared : model_ph.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_ph.r_squared ? "水温(Temp)" : "pH值", model_temp.r_squared < model_ph.r_squared ? model_temp.r_squared : model_ph.r_squared);
-        }
-    } else if (model_ph.r_squared >= model_airtemp.r_squared && model_ph.r_squared >= model_temp.r_squared && model_ph.r_squared >= model_salinity.r_squared) {
-        printf("1. %s: %.4f\n", "pH值", model_ph.r_squared);
-        if (model_temp.r_squared >= model_airtemp.r_squared && model_temp.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "水温(Temp)", model_temp.r_squared);
-            printf("3. %s: %.4f\n", model_airtemp.r_squared >= model_salinity.r_squared ? "气温(Air_temp)" : "盐度(Salinity)", model_airtemp.r_squared >= model_salinity.r_squared ? model_airtemp.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_airtemp.r_squared < model_salinity.r_squared ? "气温(Air_temp)" : "盐度(Salinity)", model_airtemp.r_squared < model_salinity.r_squared ? model_airtemp.r_squared : model_salinity.r_squared);
-        } else if (model_airtemp.r_squared >= model_temp.r_squared && model_airtemp.r_squared >= model_salinity.r_squared) {
-            printf("2. %s: %.4f\n", "气温(Air_temp)", model_airtemp.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_salinity.r_squared ? "水温(Temp)" : "盐度(Salinity)", model_temp.r_squared >= model_salinity.r_squared ? model_temp.r_squared : model_salinity.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_salinity.r_squared ? "水温(Temp)" : "盐度(Salinity)", model_temp.r_squared < model_salinity.r_squared ? model_temp.r_squared : model_salinity.r_squared);
-        } else {
-            printf("2. %s: %.4f\n", "盐度(Salinity)", model_salinity.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_airtemp.r_squared ? "水温(Temp)" : "气温(Air_temp)", model_temp.r_squared >= model_airtemp.r_squared ? model_temp.r_squared : model_airtemp.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_airtemp.r_squared ? "水温(Temp)" : "气温(Air_temp)", model_temp.r_squared < model_airtemp.r_squared ? model_temp.r_squared : model_airtemp.r_squared);
-        }
-    } else {
-        printf("1. %s: %.4f\n", "盐度(Salinity)", model_salinity.r_squared);
-        if (model_temp.r_squared >= model_airtemp.r_squared && model_temp.r_squared >= model_ph.r_squared) {
-            printf("2. %s: %.4f\n", "水温(Temp)", model_temp.r_squared);
-            printf("3. %s: %.4f\n", model_airtemp.r_squared >= model_ph.r_squared ? "气温(Air_temp)" : "pH值", model_airtemp.r_squared >= model_ph.r_squared ? model_airtemp.r_squared : model_ph.r_squared);
-            printf("4. %s: %.4f\n", model_airtemp.r_squared < model_ph.r_squared ? "气温(Air_temp)" : "pH值", model_airtemp.r_squared < model_ph.r_squared ? model_airtemp.r_squared : model_ph.r_squared);
-        } else if (model_airtemp.r_squared >= model_temp.r_squared && model_airtemp.r_squared >= model_ph.r_squared) {
-            printf("2. %s: %.4f\n", "气温(Air_temp)", model_airtemp.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_ph.r_squared ? "水温(Temp)" : "pH值", model_temp.r_squared >= model_ph.r_squared ? model_temp.r_squared : model_ph.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_ph.r_squared ? "水温(Temp)" : "pH值", model_temp.r_squared < model_ph.r_squared ? model_temp.r_squared : model_ph.r_squared);
-        } else {
-            printf("2. %s: %.4f\n", "pH值", model_ph.r_squared);
-            printf("3. %s: %.4f\n", model_temp.r_squared >= model_airtemp.r_squared ? "水温(Temp)" : "气温(Air_temp)", model_temp.r_squared >= model_airtemp.r_squared ? model_temp.r_squared : model_airtemp.r_squared);
-            printf("4. %s: %.4f\n", model_temp.r_squared < model_airtemp.r_squared ? "水温(Temp)" : "气温(Air_temp)", model_temp.r_squared < model_airtemp.r_squared ? model_temp.r_squared : model_airtemp.r_squared);
-        }
+    for (int i = 0; i < factor_count; i++) {
+        printf("%d. %s: %.4f\n", i + 1, factors[i].name, factors[i].model.r_squared);
     }
 
-    printf("\n结论: %s对溶解氧(DO)的影响程度最大，R2值为%.4f\n", max_factor, max_r2);
+    printf("\n结论: %s对溶解氧(DO)的影响程度最大，R2值为%.4f\n", 
+           factors[0].name, factors[0].model.r_squared);
 }

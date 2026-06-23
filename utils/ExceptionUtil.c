@@ -133,42 +133,56 @@ float calculate_column_mean(WaterQualityRecords *dataset, int param_type) {
 }
 
 /**
- * @brief 均值逼近法：取前后各n个有效数据的均值（n=10）
+ * @brief 均值逼近法：取缺失值前面最近的第n个有效数据和后面最近的第m个有效数据的均值（n=m=10）
  * @param dataset 指向数据集结构体的指针
  * @param record_idx 待处理记录在数组中的索引
  * @param param_type 参数类型（0~5）
  * @return 计算得到的均值，若前后均无有效数据则返回全局均值
  */
 float mean_approximation(WaterQualityRecords *dataset, int record_idx, int param_type) {
+    // 搜索窗口大小 默认是10
     const int window_size = 10;
-    float sum = 0.0f;
-    int count = 0;
+
+    // 存储搜索到的有效值
+    float prev_val = 0.0f; //前向找到的有效值
+    float next_val = 0.0f; //后向找到的有效值
+
+    // 标记是否找到了有效值
+    int found_prev = 0; // 前向找到的有效值
+    int found_next = 0; // 后向找到的有效值
     
-    // 向前查找有效数据
+    // 向前搜索：从 record_idx - 1 开始往前，最多搜索 window_size 条记录，只取第一个有效值
     for (int i = record_idx - 1; i >= 0 && i >= record_idx - window_size; i--) {
         float value = get_param_value(&dataset->records[i], param_type);
         if (!is_abnormal(value, param_type) && !is_missing(value)) {
-            sum += value;
-            count++;
+            prev_val = value;
+            found_prev = 1;
+            break;
         }
     }
     
-    // 向后查找有效数据
+    // 向后搜索：从 record_idx + 1 开始往后，最多搜索 window_size 条记录，只取第一个有效值
     for (int i = record_idx + 1; i < dataset->count && i <= record_idx + window_size; i++) {
         float value = get_param_value(&dataset->records[i], param_type);
         if (!is_abnormal(value, param_type) && !is_missing(value)) {
-            sum += value;
-            count++;
+            next_val = value;
+            found_next = 1;
+            break;
         }
     }
-    
-    // 如果找到了有效数据，返回均值
-    if (count > 0) {
-        return sum / count;
+    // - 若两个方向都有值：取两者平均
+    // - 若只有一个方向有值：直接使用那个值
+    // - 若两个方向都无值：使用全集均值
+    // 边界情况处理
+    if (found_prev && found_next) {
+        return (prev_val + next_val) / 2.0f;
+    } else if (found_prev) {
+        return prev_val;
+    } else if (found_next) {
+        return next_val;
+    } else {
+        return calculate_column_mean(dataset, param_type);
     }
-    
-    // 两个方向都无有效值，使用该参数的全集均值
-    return calculate_column_mean(dataset, param_type);
 }
 
 /**
@@ -209,6 +223,7 @@ DataSummary check_all_abnormal(WaterQualityRecords *dataset) {
     DataSummary summary = {0};
     summary.total = dataset->count;
     
+    //遍历每条记录各个参数的异常
     for (int i = 0; i < dataset->count; i++) {
         int error_count = count_abnormal_params(&dataset->records[i]);
         
@@ -235,7 +250,7 @@ DataSummary process_abnormal_data(WaterQualityRecords *dataset) {
     summary.deleted = 0;
     summary.fixed = 0;
     
-    // 从后往前遍历删除，避免索引混乱
+    // 前移覆盖删除 从后往前遍历
     for (int i = dataset->count - 1; i >= 0; i--) {
         int error_count = count_abnormal_params(&dataset->records[i]);
         
@@ -342,7 +357,7 @@ void moving_average_filter_param(WaterQualityRecords *dataset, int param_type, i
     // 创建临时数组存储原始数据
     float *temp = (float *)malloc(dataset->count * sizeof(float));
     if (!temp) return;
-    
+    //给临时数组赋值
     for (int i = 0; i < dataset->count; i++) {
         temp[i] = get_param_value(&dataset->records[i], param_type);
     }
@@ -353,10 +368,11 @@ void moving_average_filter_param(WaterQualityRecords *dataset, int param_type, i
         float sum = 0.0f;
         int count = 0;
         
-        // 边界处理：从 max(0, i-k) 到 min(count-1, i+k)
+        // 边界处理
         int start = (i - k) < 0 ? 0 : (i - k);
         int end = (i + k) >= dataset->count ? (dataset->count - 1) : (i + k);
         
+        // 累加窗口内有效数据
         for (int j = start; j <= end; j++) {
             float value = temp[j];
             if (!is_abnormal(value, param_type) && !is_missing(value)) {
@@ -495,6 +511,114 @@ void write_analysis_report(const char *filename, const DataSummary *summary,
     fprintf(fp, "==========================================\n");
     fprintf(fp, "报告生成时间: %s\n", __DATE__ " " __TIME__);
     fprintf(fp, "==========================================\n");
+    
+    fclose(fp);
+}
+
+/**
+ * @brief 多窗口对比分析报告（自动遍历多个窗口并输出对比表格）
+ * @param filename 输出文件名
+ * @param dataset 数据集指针（用于计算原始数据标准差）
+ * @param window_sizes 窗口大小数组（如 {3, 5, 7, 9, 11}）
+ * @param window_count 窗口数量
+ * @param std_results 二维数组，存储每个窗口滤波后的标准差（window_count * 4）
+ * @param noise_reduction 二维数组，存储每个窗口的噪声减少率（window_count * 4）
+ * @return void
+ */
+void write_multi_window_report(const char *filename, WaterQualityRecords *dataset,
+                               int window_sizes[], int window_count,
+                               float std_results[][4], float noise_reduction[][4]) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return;
+    
+    const char *param_names[] = {"水温", "盐度", "pH值", "溶解氧"};
+    
+    // 计算原始数据每一项参数的标准差
+    float std_original[4];
+    for (int i = 0; i < 4; i++) {
+        std_original[i] = calculate_std(dataset, i);
+    }
+    
+    fprintf(fp, "========== 多窗口滤波对比分析报告 ==========\n\n");
+    
+    fprintf(fp, "一、原始数据标准差\n");
+    fprintf(fp, "----------------------------------------\n");
+    fprintf(fp, "   水温: %.4f\n", std_original[0]);
+    fprintf(fp, "   盐度: %.4f\n", std_original[1]);
+    fprintf(fp, "   pH值: %.4f\n", std_original[2]);
+    fprintf(fp, "   溶解氧: %.4f\n\n", std_original[3]);
+    
+    fprintf(fp, "二、各窗口滤波效果对比\n");
+    fprintf(fp, "----------------------------------------\n");
+    
+    // 输出每个参数的对比表格 先参数 后窗口
+    for (int param = 0; param < 4; param++) {
+        fprintf(fp, "\n【%s】各窗口滤波效果对比:\n", param_names[param]);
+        fprintf(fp, "┌──────────┬──────────────┬──────────────┬────────────┐\n");
+        fprintf(fp, "│ 窗口大小  │ 滤波后标准差  │ 原始标准差    │ 噪声减少率  │\n");
+        fprintf(fp, "├──────────┼──────────────┼──────────────┼────────────┤\n");
+        
+        for (int w = 0; w < window_count; w++) {
+            fprintf(fp, "│    %2d    │   %.4f      │   %.4f      │  %.2f%%    │\n",
+                    window_sizes[w], std_results[w][param], std_original[param], noise_reduction[w][param]);
+        }
+        fprintf(fp, "└──────────┴──────────────┴──────────────┴────────────┘\n");
+    }
+    
+    fprintf(fp, "\n三、综合对比表格\n");
+    fprintf(fp, "----------------------------------------\n");
+    fprintf(fp, "┌──────────┬──────────────┬──────────────┬──────────────┬──────────────┐\n");
+    fprintf(fp, "│ 窗口大小  │   水温降噪率  │  盐度降噪率   │  pH值降噪率   │ 溶解氧降噪率  │\n");
+    fprintf(fp, "├──────────┼──────────────┼──────────────┼──────────────┼──────────────┤\n");
+    
+    for (int w = 0; w < window_count; w++) {
+        fprintf(fp, "│    %2d    │   %.2f%%     │   %.2f%%     │   %.2f%%     │   %.2f%%     │\n",
+                window_sizes[w], noise_reduction[w][0], noise_reduction[w][1], 
+                noise_reduction[w][2], noise_reduction[w][3]);
+    }
+    fprintf(fp, "└──────────┴──────────────┴──────────────┴──────────────┴──────────────┘\n");
+    
+    fprintf(fp, "\n四、最佳窗口选择分析\n");
+    fprintf(fp, "----------------------------------------\n");
+    
+    // 计算每个窗口的平均降噪率
+    float avg_reduction[5];
+    for (int w = 0; w < window_count; w++) {
+        avg_reduction[w] = (noise_reduction[w][0] + noise_reduction[w][1] + 
+                           noise_reduction[w][2] + noise_reduction[w][3]) / 4.0f;
+    }
+    
+    // 找到最佳窗口（平均降噪率最高的）
+    int best_window_idx = 0;
+    float best_avg = avg_reduction[0];
+    for (int w = 1; w < window_count; w++) {
+        if (avg_reduction[w] > best_avg) {
+            best_avg = avg_reduction[w];
+            best_window_idx = w;
+        }
+    }
+    
+    fprintf(fp, "各窗口平均噪声减少率:\n");
+    for (int w = 0; w < window_count; w++) {
+        fprintf(fp, "  窗口 %2d: %.2f%%\n", window_sizes[w], avg_reduction[w]);
+    }
+    
+    fprintf(fp, "\n【结论】\n");
+    fprintf(fp, "根据对比分析结果，窗口 %d 是最佳滤波窗口。\n", window_sizes[best_window_idx]);
+    fprintf(fp, "\n理由说明:\n");
+    fprintf(fp, "  1. 该窗口的平均噪声减少率为 %.2f%%，在所有测试窗口中最高。\n", avg_reduction[best_window_idx]);
+    fprintf(fp, "  2. 具体参数降噪效果:\n");
+    fprintf(fp, "     - 水温: %.2f%%\n", noise_reduction[best_window_idx][0]);
+    fprintf(fp, "     - 盐度: %.2f%%\n", noise_reduction[best_window_idx][1]);
+    fprintf(fp, "     - pH值: %.2f%%\n", noise_reduction[best_window_idx][2]);
+    fprintf(fp, "     - 溶解氧: %.2f%%\n", noise_reduction[best_window_idx][3]);
+    fprintf(fp, "  3. 窗口 %d 在降噪效果和保留数据细节之间达到了较好的平衡。\n", window_sizes[best_window_idx]);
+    fprintf(fp, "  4. 相比更大的窗口，该窗口能更好地保留原始数据的变化趋势；\n");
+    fprintf(fp, "     相比更小的窗口，该窗口能更有效地去除噪声。\n\n");
+    
+    fprintf(fp, "========================================\n");
+    fprintf(fp, "报告生成时间: %s %s\n", __DATE__, __TIME__);
+    fprintf(fp, "========================================\n");
     
     fclose(fp);
 }

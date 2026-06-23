@@ -18,7 +18,7 @@
 /**
  * @brief 线性回归模型结构体
  * 
- * 存储线性回归拟合得到的参数，包括斜率、截距和决定系数R2。
+ * 存储线性回归拟合得到的参数，包括斜率slope、截距intercept和决定系数r_squared。
  */
 typedef struct {
     double slope;          /**< 直线斜率（回归系数） */

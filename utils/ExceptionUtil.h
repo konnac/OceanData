@@ -130,4 +130,18 @@ void moving_average_filter(WaterQualityRecords *dataset, int window_size);
 void write_analysis_report(const char *filename, const DataSummary *summary, 
                           float std_before[], float std_after[], int window_sizes[], int window_count);
 
+/**
+ * @brief 多窗口对比分析报告（自动遍历多个窗口并输出对比表格）
+ * @param filename 输出文件名
+ * @param dataset 数据集指针（用于计算原始数据标准差）
+ * @param window_sizes 窗口大小数组（如 {3, 5, 7, 9, 11}）
+ * @param window_count 窗口数量
+ * @param std_results 二维数组，存储每个窗口滤波后的标准差（window_count x 4）
+ * @param noise_reduction 二维数组，存储每个窗口的噪声减少率（window_count x 4）
+ * @return void
+ */
+void write_multi_window_report(const char *filename, WaterQualityRecords *dataset,
+                               int window_sizes[], int window_count,
+                               float std_results[][4], float noise_reduction[][4]);
+
 #endif /* EXCEPTION_H */

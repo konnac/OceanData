@@ -1,3 +1,14 @@
+/**
+ * @file MainMenuAdmin.c
+ * @brief 海水养殖水质分析系统 - 管理员主菜单实现
+ *
+ * 提供水质数据管理、预处理、统计分析、预测分析、报告生成
+ * 以及数据备份与恢复等功能模块的菜单交互界面。
+ *
+ * @author OceanData Team
+ * @version 1.0
+ */
+
 #include "MainMenuAdmin.h"
 
 #include <stdio.h>
@@ -12,14 +23,25 @@
 #include "TxtFileUtil.h"
 #include "WaterQuality.h"
 
+/** @brief 路径字符串最大长度 */
 #define MAX_PATH_LEN 260
+/** @brief 报告文件最大显示行数 */
 #define MAX_REPORT_LINES 300
 
+/** @brief 当前加载的数据文件路径 */
 static char g_current_data_file[MAX_PATH_LEN] = "";
+/** @brief 滤波前各参数标准差（水温、盐度、pH、溶解氧） */
 static float g_last_std_before[4] = {0};
+/** @brief 滤波后各参数标准差（水温、盐度、pH、溶解氧） */
 static float g_last_std_after[4] = {0};
+/** @brief 上次使用的移动平均窗口大小 */
 static int g_last_window_size = 0;
 
+/**
+ * @brief 候选数据文件路径列表
+ *
+ * 按优先级尝试查找可用的数据文件路径
+ */
 static const char *DATA_FILE_CANDIDATES[] = {
     "data/WaterQuilityRecords.csv",
     "../data/WaterQuilityRecords.csv",
@@ -27,12 +49,33 @@ static const char *DATA_FILE_CANDIDATES[] = {
     "WaterQuilityRecords.csv"
 };
 
+/**
+ * @brief 参数名称数组
+ *
+ * 依次对应：水温、盐度、pH、溶解氧、降水量、气温
+ */
 static const char *PARAM_NAMES[] = {
     "水温", "盐度", "pH", "溶解氧", "降水量", "气温"
 };
 
 void showDataPreprocessMenu(void);
 
+// 函数声明
+static void dataOperation(void);
+static void dataPreprocess(void);
+static void statisticalAnalysis(void);
+static void predictionAnalysis(void);
+static void viewOverview(void);
+static void viewWarningReport(void);
+static void viewAnalysisReport(void);
+static void backupAndRestore(void);
+static void apply_moving_average(void);
+
+/**
+ * @brief 清屏函数
+ *
+ * 根据操作系统类型调用相应的清屏命令
+ */
 static void clearScreen(void) {
 #ifdef _WIN32
     system("cls");
@@ -41,12 +84,24 @@ static void clearScreen(void) {
 #endif
 }
 
+/**
+ * @brief 清除输入缓冲区
+ *
+ * 读取并丢弃输入缓冲区中的所有字符，直到换行符或EOF
+ */
 static void clearInputBuffer(void) {
     int ch;
     while ((ch = getchar()) != '\n' && ch != EOF) {
     }
 }
 
+/**
+ * @brief 读取整数输入
+ *
+ * @param[in] prompt 提示信息
+ * @param[out] out 输出参数，存储读取的整数
+ * @return 读取成功返回1，失败返回0
+ */
 static int readInt(const char *prompt, int *out) {
     printf("%s", prompt);
     if (scanf("%d", out) != 1) {
@@ -58,6 +113,13 @@ static int readInt(const char *prompt, int *out) {
     return 1;
 }
 
+/**
+ * @brief 读取浮点数输入
+ *
+ * @param[in] prompt 提示信息
+ * @param[out] out 输出参数，存储读取的浮点数
+ * @return 读取成功返回1，失败返回0
+ */
 static int readFloat(const char *prompt, float *out) {
     printf("%s", prompt);
     if (scanf("%f", out) != 1) {
@@ -69,6 +131,14 @@ static int readFloat(const char *prompt, float *out) {
     return 1;
 }
 
+/**
+ * @brief 读取字符串单词（不含空格）
+ *
+ * @param[in] prompt 提示信息
+ * @param[out] out 输出缓冲区，存储读取的字符串
+ * @param[in] size 输出缓冲区大小
+ * @return 读取成功返回1，失败返回0
+ */
 static int readWord(const char *prompt, char *out, size_t size) {
     char line[512];
     size_t len;
@@ -95,6 +165,12 @@ static int readWord(const char *prompt, char *out, size_t size) {
     return 1;
 }
 
+/**
+ * @brief 确认操作提示
+ *
+ * @param[in] prompt 确认提示信息
+ * @return 用户输入y/Y返回1，否则返回0
+ */
 static int confirmAction(const char *prompt) {
     char answer[16];
     if (!readWord(prompt, answer, sizeof(answer))) {
@@ -103,6 +179,17 @@ static int confirmAction(const char *prompt) {
     return answer[0] == 'y' || answer[0] == 'Y';
 }
 
+
+
+
+
+
+/**
+ * @brief 检查文件是否可读
+ *
+ * @param[in] path 文件路径
+ * @return 可读返回1，否则返回0
+ */
 static int canOpenForRead(const char *path) {
     FILE *fp = fopen(path, "r");
     if (!fp) {
@@ -112,6 +199,13 @@ static int canOpenForRead(const char *path) {
     return 1;
 }
 
+/**
+ * @brief 查找并解析已存在的数据文件
+ *
+ * @param[out] out 输出缓冲区，存储找到的文件路径
+ * @param[in] outSize 输出缓冲区大小
+ * @return 找到返回1，未找到返回0
+ */
 static int resolveExistingDataFile(char *out, size_t outSize) {
     size_t count = sizeof(DATA_FILE_CANDIDATES) / sizeof(DATA_FILE_CANDIDATES[0]);
     for (size_t i = 0; i < count; i++) {
@@ -124,12 +218,19 @@ static int resolveExistingDataFile(char *out, size_t outSize) {
     return 0;
 }
 
+/**
+ * @brief 获取可写的数据文件路径
+ *
+ * @return 返回当前数据文件路径字符串
+ */
 static const char *getWritableDataFile(void) {
     static char resolved[MAX_PATH_LEN];
 
+    //缓存则直接返回
     if (g_current_data_file[0] != '\0') {
         return g_current_data_file;
     }
+    //查找并解析已存在的数据文件
     if (resolveExistingDataFile(resolved, sizeof(resolved))) {
         strncpy(g_current_data_file, resolved, sizeof(g_current_data_file) - 1);
         g_current_data_file[sizeof(g_current_data_file) - 1] = '\0';
@@ -138,6 +239,11 @@ static const char *getWritableDataFile(void) {
     return DATA_FILE_CANDIDATES[0];
 }
 
+/**
+ * @brief 加载默认数据文件
+ *
+ * @return 加载成功返回1，失败返回0
+ */
 static int loadDefaultData(void) {
     char path[MAX_PATH_LEN];
     if (!resolveExistingDataFile(path, sizeof(path))) {
@@ -146,6 +252,7 @@ static int loadDefaultData(void) {
         return 0;
     }
 
+    //若records存在则初始化
     if (!g_records.records || g_records.capacity <= 0) {
         WQ_Init(&g_records, 1000);
     } else {
@@ -157,12 +264,19 @@ static int loadDefaultData(void) {
         return 0;
     }
 
+
+    //给当前加载的数据文件赋值
     strncpy(g_current_data_file, path, sizeof(g_current_data_file) - 1);
     g_current_data_file[sizeof(g_current_data_file) - 1] = '\0';
     printf("[提示] 已加载 %d 条记录：%s\n", g_records.count, g_current_data_file);
     return 1;
 }
 
+/**
+ * @brief 确保数据已加载
+ *
+ * @return 数据已加载或加载成功返回1，否则返回0
+ */
 static int ensureDataLoaded(void) {
     if (g_records.count > 0) {
         return 1;
@@ -171,6 +285,11 @@ static int ensureDataLoaded(void) {
     return loadDefaultData();
 }
 
+/**
+ * @brief 保存当前数据到文件
+ *
+ * @return 保存成功返回1，失败返回0
+ */
 static int saveCurrentData(void) {
     const char *path;
     if (g_records.count == 0) {
@@ -188,6 +307,12 @@ static int saveCurrentData(void) {
     return 0;
 }
 
+/**
+ * @brief 打印单条水质记录
+ *
+ * @param[in] record 水质记录指针
+ * @param[in] index 记录序号（从0开始）
+ */
 static void printRecord(const WaterQualityRecord *record, int index) {
     if (!record) {
         return;
@@ -203,16 +328,26 @@ static void printRecord(const WaterQualityRecord *record, int index) {
            record->Air_temp);
 }
 
+/**
+ * @brief 打印记录表头
+ */
 static void printRecordHeader(void) {
     printf(" 序号 | 时间                |     水温 |     盐度 |     pH |   溶解氧 |   降水量 |     气温\n");
     printf("------|---------------------|----------|----------|--------|----------|----------|----------\n");
 }
 
+/**
+ * @brief 输入单条水质记录
+ *
+ * @param[out] record 输出参数，存储输入的记录
+ * @return 输入成功返回1，取消或失败返回0
+ */
 static int inputRecord(WaterQualityRecord *record) {
     char timeText[sizeof(record->DailyStats)];
     if (!record) {
         return 0;
     }
+    //初始化结构体,将所有字段设为零值
     memset(record, 0, sizeof(*record));
 
     printf("时间格式建议：YYYY-MM-DD_HH:MM:SS，下划线会自动替换为空格。\n");
@@ -234,6 +369,9 @@ static int inputRecord(WaterQualityRecord *record) {
     return 1;
 }
 
+/**
+ * @brief 显示主菜单
+ */
 static void displayMenu(void) {
     printf("\n========================================\n");
     printf("     海水养殖水质分析系统 v1.0\n");
@@ -251,6 +389,43 @@ static void displayMenu(void) {
     printf("========================================\n");
 }
 
+/**
+ * @brief 显示管理员主菜单
+ *
+ * 管理系统主入口，提供各功能模块的菜单导航
+ */
+void showAdminMenu(void) {
+    int choice;
+
+    while (1) {
+        displayMenu();
+        if (!readInt("   请选择操作 (0-9): ", &choice)) {
+            continue;
+        }
+
+        switch (choice) {
+            case 1: dataOperation(); break;
+            case 2: dataPreprocess(); break;
+            case 3: statisticalAnalysis(); break;
+            case 4: predictionAnalysis(); break;
+            case 5: viewOverview(); break;
+            case 6: viewWarningReport(); break;
+            case 7: viewAnalysisReport(); break;
+            case 8: backupAndRestore(); break;
+            case 9: clearScreen(); break;
+            case 0:
+                printf("\n感谢使用系统，再见！\n");
+                return;
+            default:
+                printf("\n无效选项，请重新选择！\n");
+                break;
+        }
+    }
+}
+
+/**
+ * @brief 分页浏览数据
+ */
 static void browseData(void) {
     int rowsPerPage = 15;
     int page;
@@ -264,6 +439,7 @@ static void browseData(void) {
     if (rowsPerPage <= 0) {
         rowsPerPage = 15;
     }
+    //向上取整, 以防去掉余数
     totalPages = (g_records.count + rowsPerPage - 1) / rowsPerPage;
 
     while (1) {
@@ -278,11 +454,15 @@ static void browseData(void) {
     }
 }
 
+/**
+ * @brief 新增单条水质记录
+ */
 static void addRecord(void) {
     WaterQualityRecord record;
     if (!ensureDataLoaded()) {
         return;
     }
+    // 给记录赋值
     if (!inputRecord(&record)) {
         printf("[提示] 新增操作已取消。\n");
         return;
@@ -295,6 +475,9 @@ static void addRecord(void) {
     }
 }
 
+/**
+ * @brief 修改指定记录
+ */
 static void updateRecord(void) {
     int index;
     WaterQualityRecord record;
@@ -327,6 +510,9 @@ static void updateRecord(void) {
     }
 }
 
+/**
+ * @brief 删除单条记录
+ */
 static void deleteSingleRecord(void) {
     int index;
 
@@ -358,8 +544,12 @@ static void deleteSingleRecord(void) {
     }
 }
 
+/**
+ * @brief 批量删除记录
+ */
 static void deleteBatchRecords(void) {
     int count;
+    // 要删除的记录
     int *indices;
 
     if (!ensureDataLoaded()) {
@@ -370,6 +560,7 @@ static void deleteBatchRecords(void) {
         return;
     }
 
+    //根据 count 分配足够存放 count 个 int 的内存空间，指针赋给 indices
     indices = (int *)malloc((size_t)count * sizeof(int));
     if (!indices) {
         printf("[错误] 内存分配失败。\n");
@@ -378,12 +569,16 @@ static void deleteBatchRecords(void) {
 
     for (int i = 0; i < count; i++) {
         char prompt[64];
+        //用snprintf拼接好字符串存入内存
         snprintf(prompt, sizeof(prompt), "请输入第 %d 条待删除记录序号: ", i + 1);
+        //prompt传给下一行的 readInt 函数打印
         if (!readInt(prompt, &indices[i])) {
             free(indices);
             return;
         }
+        //转为实际的数组下标
         indices[i]--;
+        //校验是否不合法
         if (indices[i] < 0 || indices[i] >= g_records.count) {
             printf("[错误] 序号 %d 超出范围，批量删除已取消。\n", indices[i] + 1);
             free(indices);
@@ -412,6 +607,9 @@ static void deleteBatchRecords(void) {
     free(indices);
 }
 
+/**
+ * @brief 条件筛选数据
+ */
 static void filterData(void) {
     if (!ensureDataLoaded()) {
         return;
@@ -420,6 +618,9 @@ static void filterData(void) {
     clearInputBuffer();
 }
 
+/**
+ * @brief 排序数据
+ */
 static void sortData(void) {
     if (!ensureDataLoaded()) {
         return;
@@ -431,6 +632,11 @@ static void sortData(void) {
     }
 }
 
+/**
+ * @brief 数据基础操作子菜单
+ *
+ * 提供数据加载、浏览、增删改查等基础操作
+ */
 static void dataOperation(void) {
     int choice;
 
@@ -468,10 +674,18 @@ static void dataOperation(void) {
     }
 }
 
+/**
+ * @brief 数据预处理入口
+ */
 static void dataPreprocess(void) {
     showDataPreprocessMenu();
 }
 
+/**
+ * @brief 检测并统计异常值和缺失值
+ *
+ * @param[in] dataset 数据集指针
+ */
 static void check_abnormal(WaterQualityRecords *dataset) {
     int missingCount = 0;
     DataSummary summary;
@@ -497,6 +711,11 @@ static void check_abnormal(WaterQualityRecords *dataset) {
     printf("=====================================\n");
 }
 
+/**
+ * @brief 处理异常数据
+ *
+ * 删除异常参数≥3的记录，填充其余异常值
+ */
 static void handle_abnormal_data(void) {
     DataSummary summary;
 
@@ -516,6 +735,11 @@ static void handle_abnormal_data(void) {
     }
 }
 
+/**
+ * @brief 处理缺失值
+ *
+ * 使用均值逼近法填充缺失值
+ */
 static void handle_missing_values(void) {
     DataSummary summary;
 
@@ -534,49 +758,144 @@ static void handle_missing_values(void) {
     }
 }
 
+/**
+ * @brief 应用移动平均滤波（多窗口自动遍历）
+ *
+ * 对水温、盐度、pH、溶解氧四项参数进行移动平均平滑
+ * 自动遍历窗口 3、5、7、9、11 并生成对比分析报告
+ */
 static void apply_moving_average(void) {
-    int windowSize;
-
     if (!ensureDataLoaded()) {
         return;
     }
 
-    while (!readInt("请输入移动平均窗口大小（奇数且>=3，如3、5、7）: ", &windowSize) ||
-           windowSize < 3 ||
-           windowSize % 2 == 0) {
-        printf("输入无效，请输入奇数且>=3。\n");
-    }
-
-    g_last_std_before[0] = calculate_std(&g_records, 0);
-    g_last_std_before[1] = calculate_std(&g_records, 1);
-    g_last_std_before[2] = calculate_std(&g_records, 2);
-    g_last_std_before[3] = calculate_std(&g_records, 3);
-
-    moving_average_filter(&g_records, windowSize);
-
-    g_last_std_after[0] = calculate_std(&g_records, 0);
-    g_last_std_after[1] = calculate_std(&g_records, 1);
-    g_last_std_after[2] = calculate_std(&g_records, 2);
-    g_last_std_after[3] = calculate_std(&g_records, 3);
-    g_last_window_size = windowSize;
-
-    printf("\n========== 移动平均滤波完成 ==========\n");
-    printf("窗口大小: %d\n", windowSize);
-    printf("  参数    | 滤波前 | 滤波后 | 噪声减少率\n");
-    printf("----------|--------|--------|----------\n");
+    // 定义要测试的窗口大小
+    int window_sizes[] = {3, 5, 7, 9, 11};
+    int window_count = sizeof(window_sizes) / sizeof(window_sizes[0]);
+    
+    // 存储每个窗口滤波后的标准差和噪声减少率
+    float std_results[5][4] = {0};
+    float noise_reduction[5][4] = {0};
+    
+    // 计算原始数据标准差
+    float std_original[4];
     for (int i = 0; i < 4; i++) {
-        float rate = g_last_std_before[i] > 0
-                         ? (1 - g_last_std_after[i] / g_last_std_before[i]) * 100
-                         : 0;
-        printf("  %-6s | %.4f | %.4f | %.2f%%\n",
-               PARAM_NAMES[i], g_last_std_before[i], g_last_std_after[i], rate);
+        std_original[i] = calculate_std(&g_records, i);
     }
+    
+    printf("\n========== 开始多窗口滤波分析 ==========\n");
+    printf("原始数据标准差:\n");
+    printf("  水温: %.4f, 盐度: %.4f, pH值: %.4f, 溶解氧: %.4f\n\n",
+           std_original[0], std_original[1], std_original[2], std_original[3]);
+    
+    // 为每个窗口创建数据副本并进行滤波
+    for (int w = 0; w < window_count; w++) {
+        int window_size = window_sizes[w];
+        
+        printf("正在处理窗口 %d...\n", window_size);
+        
+        // 创建数据副本
+        WaterQualityRecords dataset_copy;
+        WQ_Init(&dataset_copy, g_records.capacity);
+         
+        // 复制数据
+        for (int i = 0; i < g_records.count; i++) {
+            WQ_AddRecord(&dataset_copy, &g_records.records[i]);
+        }
+        
+        // 对副本进行滤波
+        moving_average_filter(&dataset_copy, window_size);
+        
+        // 计算滤波后的标准差
+        for (int param = 0; param < 4; param++) {
+            //该窗口各种参数标准差
+            std_results[w][param] = calculate_std(&dataset_copy, param);
+            
+            // 计算噪声减少率
+            if (std_original[param] > 0) {
+                noise_reduction[w][param] = (1 - std_results[w][param] / std_original[param]) * 100;
+            } else {
+                noise_reduction[w][param] = 0;
+            }
+        }
+        
+        printf("  窗口 %d 完成: 水温降噪 %.2f%%, 盐度降噪 %.2f%%, pH值降噪 %.2f%%, 溶解氧降噪 %.2f%%\n",
+               window_size, noise_reduction[w][0], noise_reduction[w][1], 
+               noise_reduction[w][2], noise_reduction[w][3]);
+        
+        // 保存滤波后的数据到文件
+        char filename[256];
+        snprintf(filename, sizeof(filename), "data/filtered_window_%d.csv", window_size);
+        TxtUtil_SaveToFile(filename, &dataset_copy);
+        printf("  滤波结果已保存到: %s\n", filename);
+        
+        // 释放副本内存
+        free(dataset_copy.records);
+    }
+    
+    printf("\n========== 滤波分析完成 ==========\n");
+    
+    // 生成多窗口对比分析报告 
+    write_multi_window_report("data/multi_window_analysis_report.txt", &g_records,
+                              window_sizes, window_count, std_results, noise_reduction);
+    printf("详细分析报告已保存到: data/multi_window_analysis_report.txt\n");
+    
+    // 输出综合对比表格
+    printf("\n综合对比表格:\n");
+    printf("┌──────────┬──────────────┬──────────────┬──────────────┬──────────────┐\n");
+    printf("│ 窗口大小 │   水温降噪率 │  盐度降噪率  │  pH值降噪率  │ 溶解氧降噪率 │\n");
+    printf("├──────────┼──────────────┼──────────────┼──────────────┼──────────────┤\n");
+    
+    for (int w = 0; w < window_count; w++) {
+        printf("│    %2d    │   %.2f%%     │   %.2f%%     │   %.2f%%     │   %.2f%%     │\n",
+               window_sizes[w], noise_reduction[w][0], noise_reduction[w][1], 
+               noise_reduction[w][2], noise_reduction[w][3]);
+    }
+    printf("└──────────┴──────────────┴──────────────┴──────────────┴──────────────┘\n");
+    
+    // 计算并输出最佳窗口
+    float avg_reduction[5];
+    for (int w = 0; w < window_count; w++) {
+        avg_reduction[w] = (noise_reduction[w][0] + noise_reduction[w][1] + 
+                           noise_reduction[w][2] + noise_reduction[w][3]) / 4.0f;
+    }
+    
+    int best_window_idx = 0;
+    float best_avg = avg_reduction[0];
+    for (int w = 1; w < window_count; w++) {
+        if (avg_reduction[w] > best_avg) {
+            best_avg = avg_reduction[w];
+            best_window_idx = w;
+        }
+    }
+    
+    printf("\n【结论】\n");
+    printf("最佳滤波窗口: %d\n", window_sizes[best_window_idx]);
+    printf("平均噪声减少率: %.2f%%\n", avg_reduction[best_window_idx]);
+    printf("该窗口在降噪效果和保留数据细节之间达到了较好的平衡。\n");
     printf("======================================\n");
-    if (confirmAction("是否保存滤波后的数据？(y/N): ")) {
-        saveCurrentData();
+    
+    // 询问是否应用最佳窗口的滤波结果到当前数据
+    if (confirmAction("\n是否应用最佳窗口的滤波结果到当前数据？(y/N): ")) {
+        // 重新使用最佳窗口对当前数据进行滤波
+        moving_average_filter(&g_records, window_sizes[best_window_idx]);
+        printf("已应用窗口 %d 的滤波结果到当前数据。\n", window_sizes[best_window_idx]);
+
+        if (confirmAction("是否保存滤波后的数据？(y/N): ")) {
+            char new_file[MAX_PATH_LEN];
+            snprintf(new_file, sizeof(new_file), "data/WaterQuilityRecords_filtered_w%d.csv", window_sizes[best_window_idx]);
+            if (TxtUtil_SaveToFile(new_file, &g_records) == 0) {
+                printf("[提示] 数据已保存到 %s\n", new_file);
+            } else {
+                printf("[错误] 数据保存失败：%s\n", new_file);
+            }
+        }
     }
 }
 
+/**
+ * @brief 保存数据概览报告
+ */
 static void save_data_summary(void) {
     DataSummary summary;
 
@@ -590,6 +909,11 @@ static void save_data_summary(void) {
     printf("\n[提示] 数据概览报告已保存到 data_summary.txt\n");
 }
 
+/**
+ * @brief 保存详细分析报告
+ *
+ * 包含异常值统计和滤波前后对比数据
+ */
 static void save_analysis_report(void) {
     DataSummary summary;
     int windowSizes[1];
@@ -626,6 +950,9 @@ static void save_analysis_report(void) {
     printf("\n[提示] 详细分析报告已保存到 analysis_report.txt\n");
 }
 
+/**
+ * @brief 打印基本统计量表格
+ */
 static void printBasicStatsTable(void) {
     ParamType params[] = {
         PARAM_TEMP, PARAM_SALINITY, PARAM_PH, PARAM_DO, PARAM_PRECIP, PARAM_AIRTEMP
@@ -643,6 +970,11 @@ static void printBasicStatsTable(void) {
     printf("================================\n");
 }
 
+/**
+ * @brief 统计分析子菜单
+ *
+ * 提供基本统计量、预警分析、相关性分析等功能
+ */
 static void statisticalAnalysis(void) {
     int choice;
 
@@ -686,6 +1018,13 @@ static void statisticalAnalysis(void) {
     }
 }
 
+/**
+ * @brief 根据选择获取线性回归模型
+ *
+ * @param[in] choice 因子选择（1-4）
+ * @param[out] factorName 输出参数，存储因子名称
+ * @return 对应的线性回归模型
+ */
 static LinearModel modelByChoice(int choice, const char **factorName) {
     switch (choice) {
         case 1:
@@ -706,6 +1045,11 @@ static LinearModel modelByChoice(int choice, const char **factorName) {
     }
 }
 
+/**
+ * @brief 打印回归分析结果
+ *
+ * @param[in] factorChoice 因子选择
+ */
 static void printModelResult(int factorChoice) {
     const char *factorName;
     LinearModel model = modelByChoice(factorChoice, &factorName);
@@ -717,8 +1061,11 @@ static void printModelResult(int factorChoice) {
     printf("==================================\n");
 }
 
+/**
+ * @brief 根据因子值预测溶解氧
+ */
 static void predictDOValue(void) {
-    int factorChoice;
+    int factorChoice; //
     float xValue;
     const char *factorName;
     LinearModel model;
@@ -739,6 +1086,11 @@ static void predictDOValue(void) {
            factorName, xValue, result);
 }
 
+/**
+ * @brief 预测分析子菜单
+ *
+ * 提供单因子回归分析和多因子对比分析
+ */
 static void predictionAnalysis(void) {
     int choice;
 
@@ -783,6 +1135,9 @@ static void predictionAnalysis(void) {
     }
 }
 
+/**
+ * @brief 查看数据概览
+ */
 static void viewOverview(void) {
     DataSummary summary;
     int missingCount = 0;
@@ -809,6 +1164,11 @@ static void viewOverview(void) {
     printBasicStatsTable();
 }
 
+/**
+ * @brief 显示报告文件内容
+ *
+ * @param[in] path 报告文件路径
+ */
 static void displayReportFile(const char *path) {
     FILE *fp = fopen(path, "r");
     char line[1024];
@@ -830,6 +1190,14 @@ static void displayReportFile(const char *path) {
     fclose(fp);
 }
 
+/**
+ * @brief 查找并显示已有报告
+ *
+ * @param[in] title 报告类型标题
+ * @param[in] paths 候选路径数组
+ * @param[in] pathCount 路径数量
+ * @return 找到并显示的报告数量
+ */
 static int displayExistingReports(const char *title, const char *paths[], int pathCount) {
     int shown = 0;
 
@@ -847,6 +1215,9 @@ static int displayExistingReports(const char *title, const char *paths[], int pa
     return shown;
 }
 
+/**
+ * @brief 查看预警报告
+ */
 static void viewWarningReport(void) {
     const char *paths[] = {
         "data/warning_dawn.csv",
@@ -861,6 +1232,9 @@ static void viewWarningReport(void) {
     displayExistingReports("预警报告", paths, (int)(sizeof(paths) / sizeof(paths[0])));
 }
 
+/**
+ * @brief 查看分析报告
+ */
 static void viewAnalysisReport(void) {
     const char *paths[] = {
         "analysis_report.txt",
@@ -883,6 +1257,9 @@ static void viewAnalysisReport(void) {
     displayExistingReports("分析报告", paths, (int)(sizeof(paths) / sizeof(paths[0])));
 }
 
+/**
+ * @brief 列出可用备份文件
+ */
 static void listBackups(void) {
     char backupList[100][256];
     int count = Backup_List(backupList, 100);
@@ -899,6 +1276,9 @@ static void listBackups(void) {
     printf("=============================\n");
 }
 
+/**
+ * @brief 从备份恢复数据
+ */
 static void restoreBackup(void) {
     char backupList[100][256];
     int count = Backup_List(backupList, 100);
@@ -929,6 +1309,9 @@ static void restoreBackup(void) {
     }
 }
 
+/**
+ * @brief 数据备份与恢复子菜单
+ */
 static void backupAndRestore(void) {
     int choice;
     char customName[256];
@@ -973,35 +1356,13 @@ static void backupAndRestore(void) {
     }
 }
 
-void showAdminMenu(void) {
-    int choice;
 
-    while (1) {
-        displayMenu();
-        if (!readInt("   请选择操作 (0-9): ", &choice)) {
-            continue;
-        }
 
-        switch (choice) {
-            case 1: dataOperation(); break;
-            case 2: dataPreprocess(); break;
-            case 3: statisticalAnalysis(); break;
-            case 4: predictionAnalysis(); break;
-            case 5: viewOverview(); break;
-            case 6: viewWarningReport(); break;
-            case 7: viewAnalysisReport(); break;
-            case 8: backupAndRestore(); break;
-            case 9: clearScreen(); break;
-            case 0:
-                printf("\n感谢使用系统，再见！\n");
-                return;
-            default:
-                printf("\n无效选项，请重新选择！\n");
-                break;
-        }
-    }
-}
-
+/**
+ * @brief 显示数据预处理子菜单
+ *
+ * 提供异常值检测、缺失值处理、移动平均滤波等功能
+ */
 void showDataPreprocessMenu(void) {
     int choice;
 
