@@ -133,7 +133,7 @@ float calculate_column_mean(WaterQualityRecords *dataset, int param_type) {
 }
 
 /**
- * @brief 均值逼近法：取缺失值前面最近的第n个有效数据和后面最近的第m个有效数据的均值（n=m=10）
+ * @brief 均值逼近法：取缺失值前面第n个有效数据和后面第m个有效数据的均值（n=m=10）
  * @param dataset 指向数据集结构体的指针
  * @param record_idx 待处理记录在数组中的索引
  * @param param_type 参数类型（0~5）
@@ -231,12 +231,22 @@ DataSummary check_all_abnormal(WaterQualityRecords *dataset) {
     //遍历每条记录各个参数的异常
     for (int i = 0; i < dataset->count; i++) {
         int error_count = count_abnormal_params(&dataset->records[i]);
-        
+
         if (error_count > 0) {
             summary.abnormal++;
             if (error_count > summary.max_error_params) {
                 summary.max_error_params = error_count;
             }
+            
+            // 记录异常数据的时间跨度
+            if (summary.abnormal_start_time[0] == '\0') {
+                // 第一次发现异常记录，记录开始时间
+                strncpy(summary.abnormal_start_time, dataset->records[i].DailyStats, sizeof(summary.abnormal_start_time) - 1);
+                summary.abnormal_start_time[sizeof(summary.abnormal_start_time) - 1] = '\0';
+            }
+            // 更新结束时间（最后一次异常记录的时间）
+            strncpy(summary.abnormal_end_time, dataset->records[i].DailyStats, sizeof(summary.abnormal_end_time) - 1);
+            summary.abnormal_end_time[sizeof(summary.abnormal_end_time) - 1] = '\0';
         } else {
             summary.valid++;
         }
@@ -273,8 +283,8 @@ DataSummary process_abnormal_data(WaterQualityRecords *dataset) {
         }
     }
     
-    summary.valid = dataset->count;
-    
+    summary.total = dataset->count;
+
     return summary;
 }
 

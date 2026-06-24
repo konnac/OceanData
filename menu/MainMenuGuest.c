@@ -23,11 +23,7 @@ static const char *PARAM_NAMES[] = {
 };
 
 static void clearScreen(void) {
-#ifdef _WIN32
     system("cls");
-#else
-    system("clear");
-#endif
 }
 
 static void clearInputBuffer(void) {

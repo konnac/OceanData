@@ -39,6 +39,12 @@ static int g_last_window_size = 0;
 
 /**
  * @brief 清空上次的滤波分析结果
+ *
+ * 将上次移动平均滤波分析的相关结果重置为初始状态，包括：
+ * - g_last_std_before: 滤波前各参数的标准差数组（水温、盐度、pH、溶解氧）
+ * - g_last_std_after: 滤波后各参数的标准差数组（同上顺序）
+ * - g_last_window_size: 上次使用的移动平均窗口大小
+ *
  */
 static void clear_last_filter_analysis(void) {
     memset(g_last_std_before, 0, sizeof(g_last_std_before));
@@ -105,11 +111,7 @@ static void apply_moving_average(void);
  * 根据操作系统类型调用相应的清屏命令
  */
 static void clearScreen(void) {
-#ifdef _WIN32
     system("cls");
-#else
-    system("clear");
-#endif
 }
 
 /**
@@ -943,10 +945,30 @@ static void save_data_summary(void) {
         return;
     }
 
-    summary = check_all_abnormal(&g_records);
+    // 处理异常数据（会修改数据集）
+    summary = process_abnormal_data(&g_records);
+
+    // 处理缺失值（会修改数据集）
+    DataSummary missing_summary = process_missing_values(&g_records);
+    summary.filled = missing_summary.filled;
+
     write_data_summary("data_summary.txt", &summary);
 
+    printf("\n========== 数据概览 ==========\n");
+    printf("总记录数: %d\n", summary.total);
+    printf("异常数据记录数: %d\n", summary.abnormal);
+    printf("有效数据记录数: %d\n", summary.valid);
+    printf("单条记录最大异常参数个数: %d\n", summary.max_error_params);
+    printf("删除异常值记录数: %d\n", summary.deleted);
+    printf("修复异常值数量: %d\n", summary.fixed);
+    printf("填充缺失值数量: %d\n", summary.filled);
+    printf("==============================\n");
     printf("\n[提示] 数据概览报告已保存到 data_summary.txt\n");
+    if (summary.deleted > 0 || summary.fixed > 0 || summary.filled > 0) {
+        if (confirmAction("是否保存处理后的数据？(y/N): ")) {
+            saveCurrentData();
+        }
+    }
 }
 
 /**

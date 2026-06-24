@@ -68,7 +68,7 @@ int TxtUtil_LoadFromFile(const char *filename, WaterQualityRecords *records) {
     }
 
     if (records->capacity < 1000) {
-        int newCap = 10000;
+        int newCap = 1000;
         WaterQualityRecord *newRec =
             (WaterQualityRecord*)realloc(records->records, newCap * sizeof(WaterQualityRecord));
         if (newRec) {

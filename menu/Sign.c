@@ -100,6 +100,7 @@ int main(){
         }
     }
 
+    //释放动态内存    
     WQ_Destroy(&g_records);
     
     return 0;
