@@ -958,7 +958,7 @@ static void backupAndRestore(void) {
                 break;
             case 2:
                 if (ensureDataLoaded() &&
-                    readWord("请输入备份文件名(建议以.csv结尾): ", customName, sizeof(customName))) {
+                    readWord("请输入备份文件名(建议以backup_开头，以.csv结尾): ", customName, sizeof(customName))) {
                     Backup_Backup(&g_records, customName);
                 }
                 break;
