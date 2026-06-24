@@ -6,19 +6,6 @@
 #include<string.h>
 #include<math.h>
 
-// /辅助函数：提取时间字符串中的小时
-static int getHourFromDatetime(const char *datetime){
-    int year, month, day, hour, min, sec;
-    if (sscanf(datetime,"%d-%d-%d %d:%d:%d",&year,&month,&day,&hour,&min,&sec) == 6)
-        return hour;
-    return -1;
-}
-
-// /辅助函数：提取日期字符串
-static void getDateFromDatetime(const char *datetime, char *dateBuf){
-    strncpy(dateBuf,datetime,10);
-    dateBuf[10] = '\0';
-}
 
 static FILE *openReportOutput(const char *filename, char *usedPath, size_t usedPathSize) {
     const char *dirs[] = {"data", "../data", "../../data", "."};
@@ -49,6 +36,14 @@ static FILE *openReportOutput(const char *filename, char *usedPath, size_t usedP
 }
 
 //计算指定参数的基本统计量
+/*
+ * param: 参数类型
+ * mean: 平均值
+ * max: 最大值
+ * min: 最小值
+ * variance: 方差
+ * stddev: 标准差
+*/
 void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
                     float *mean, float *max, float *min, float *variance, float *stddev) {
     if (!records || records->count == 0) {
@@ -60,11 +55,11 @@ void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
         return;
     }
 
-    double sum = 0.0;
-    double sumSq = 0.0;
-    double maxVal = -1e9;
-    double minVal = 1e9;
-    int count = records->count;
+    double sum = 0.0;  // 所有参数的和
+    double sumSq = 0.0;  // 所有参数的平方和
+    double maxVal = -1e9;  // 所有参数的最大值
+    double minVal = 1e9;  // 所有参数的最小值
+    int count = records->count;  // 数据记录的个数
 
     for (int i = 0; i < count; i++) {
         double val = 0.0;
@@ -92,7 +87,7 @@ void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
     // 防止浮点误差导致负数
     if (varianceVal < 0.0) varianceVal = 0.0;
 
-    double stddevVal = sqrt(varianceVal);
+    double stddevVal = sqrt(varianceVal);  // 标准差 = 方差开方
 
     // 将结果写回指针指向的内存
     if (mean) *mean = (float)meanVal;
@@ -104,7 +99,7 @@ void CalcBasicStats(const WaterQualityRecords *records, ParamType param,
 
 //生成所有参数的基本统计量报告
 void GenerateBasicStatsReport(const WaterQualityRecords *records) {
-    char outputPath[260] = "";
+    char outputPath[260] = "";  // 输出文件路径
     if (!records || records->count == 0) {
         printf("无数据，无法生成统计报告。\n");
         return;
@@ -117,8 +112,8 @@ void GenerateBasicStatsReport(const WaterQualityRecords *records) {
     fprintf(fp, "========== 水质参数基本统计量 ==========\n");
     fprintf(fp, "记录总数: %d\n\n", records->count);
 
-    const char *names[] = {"水温(℃)", "盐度(PSU)", "pH", "溶解氧(mg/l)", "降水量(mm)", "气温(℃)"};
-    ParamType params[] = {PARAM_TEMP, PARAM_SALINITY, PARAM_PH, PARAM_DO, PARAM_PRECIP, PARAM_AIRTEMP};
+    const char *names[] = {"水温(℃)", "盐度(PSU)", "pH", "溶解氧(mg/l)", "降水量(mm)", "气温(℃)"};  // 参数名称
+    ParamType params[] = {PARAM_TEMP, PARAM_SALINITY, PARAM_PH, PARAM_DO, PARAM_PRECIP, PARAM_AIRTEMP};  // 参数类型
 
     for (int i = 0; i < 6; i++) {
         float mean, max, min,variance, stddev;
@@ -134,6 +129,20 @@ void GenerateBasicStatsReport(const WaterQualityRecords *records) {
     printf("基本统计量已写入 %s\n", outputPath);
 }
 
+// /辅助函数：提取日期字符串
+static void getDateFromDatetime(const char *datetime, char *dateBuf){
+    strncpy(dateBuf,datetime,10);
+    dateBuf[10] = '\0';
+}
+
+// 辅助函数：提取时间字符串中的小时
+static int getHourFromDatetime(const char *datetime){
+    int year, month, day, hour, min, sec;
+    if (sscanf(datetime,"%d-%d-%d %d:%d:%d",&year,&month,&day,&hour,&min,&sec) == 6)
+        return hour;
+    return -1;
+}
+
 //生成凌晨水下缺氧提醒
 void DawnHypoxiaWarning(const WaterQualityRecords *records){
     char outputPath[260] = "";
@@ -147,18 +156,18 @@ void DawnHypoxiaWarning(const WaterQualityRecords *records){
     fprintf(fp, "========== 日间水下缺氧提醒 ==========\n");
     fprintf(fp,"日期,凌晨DO均值(mg/L),预警等级,处理建议\n");
 
-    char currentDate[11] = "";
-    double sumDO = 0.0;
-    int countDO = 0;
+    char currentDate[11] = ""; // 当前日期
+    double sumDO = 0.0;  // 凌晨DO的累加和
+    int countDO = 0;  // 凌晨DO的计数器
 
     for (int i = 0; i < records->count; i++) {
         char date[11];
-        getDateFromDatetime(records->records[i].DailyStats, date);
-        int hour = getHourFromDatetime(records->records[i].DailyStats);
+        getDateFromDatetime(records->records[i].DailyStats, date);  // 获取时间中的日期
+        int hour = getHourFromDatetime(records->records[i].DailyStats);  // 获取时间中的小时
         if (hour >= 3 && hour <= 5) {
             // 如果日期变了，且之前有数据，先输出前一天的统计
             if (currentDate[0] != '\0' && strcmp(date, currentDate) != 0) {
-                double avgDO = sumDO / countDO;
+                double avgDO = sumDO / countDO;  // 计算凌晨DO的均值
                 if (avgDO < 3.0) 
                     fprintf(fp, "%s,%.4f,严重缺氧警告,需立即投放颗粒氧并减少投喂！\n", currentDate, avgDO);
                 else if (avgDO < 4.0) 
@@ -175,8 +184,6 @@ void DawnHypoxiaWarning(const WaterQualityRecords *records){
             // 更新当前日期
             strcpy(currentDate, date);
         } 
-        // 非凌晨时段不做处理
-
     }
     //最后一天
     if (countDO > 0)
@@ -191,7 +198,7 @@ void DawnHypoxiaWarning(const WaterQualityRecords *records){
 
 //盐度突变预警
 void SalinityShockWarning(const WaterQualityRecords *records){
-    char outputPath[260] = "";
+    char outputPath[260] = "";  // 输出文件路径
     if (!records || records->count <2 )    return;
     FILE *fp = openReportOutput("warning_salinity.csv", outputPath, sizeof(outputPath));
     if (!fp) {
@@ -221,6 +228,7 @@ void SalinityShockWarning(const WaterQualityRecords *records){
     fclose(fp);
     printf("盐度突变提醒已写入 %s\n", outputPath);
 }
+
 
 //皮尔逊相关系数
 static double pearsonCount(const double *x, const double *y, int n){
@@ -257,7 +265,13 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
     if (!temps || !salinities || !phs || !dos || !precips || !airTemps)
     {
         printf("内存分配失败！\n");
-        goto cleanup;
+        free(temps);
+        free(salinities);
+        free(phs);
+        free(dos);
+        free(precips);
+        free(airTemps);
+        return;
     }
     
     for (int i = 0; i < n; i++)
@@ -275,7 +289,13 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
     if (!fp)
     {
         printf("无法创建correlation_matrix.csv\n");
-        goto cleanup;
+        free(temps);
+        free(salinities);
+        free(phs);
+        free(dos);
+        free(precips);
+        free(airTemps);
+        return;
     }
 
     //写入表头
@@ -294,17 +314,11 @@ void CorrelationAnalysis(const WaterQualityRecords *records)
         fprintf(fp, "\n");
     }
     fclose(fp);
-    cleanup:
-    free(temps);
-    free(salinities);
-    free(phs);
-    free(dos);
-    free(precips);
-    free(airTemps);
     if (outputPath[0] != '\0') {
         printf("相关性矩阵已保存为 %s\n", outputPath);
     }
 }
+
     
 //一键执行所以统计分析
 void RunAllStatistics(const WaterQualityRecords *records)
