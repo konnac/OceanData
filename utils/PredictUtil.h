@@ -55,16 +55,6 @@ double predict(LinearModel model, double x);
  */
 double calculateRMSE(double* y_true, double* y_pred, int n);
 
-/**
- * @brief 使用留出法训练模型并评估
- * 
- * @param x 自变量数组
- * @param y 因变量数组
- * @param n 数据点总数
- * @param rmse_out 输出参数，用于返回测试集的RMSE值
- * @return LinearModel 训练得到的线性回归模型
- */
-LinearModel trainModelWithHoldout(double* x, double* y, int n, double* rmse_out);
 
 /**
  * @brief 分析气温(Air_temp)与溶解氧(DO)的线性关系

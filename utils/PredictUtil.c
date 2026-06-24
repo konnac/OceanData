@@ -141,67 +141,6 @@ double calculateRMSE(double* y_true, double* y_pred, int n) {
 }
 
 /**
- * @brief 使用留出法训练模型并评估
- * 
- * 将数据集按时间顺序拆分为训练集（前80%）和测试集（后20%），
- * 使用训练集训练模型，使用测试集评估模型的泛化能力。
- * 
- * @param x 自变量数组
- * @param y 因变量数组
- * @param n 数据点总数
- * @param rmse_out 输出参数，用于返回测试集的RMSE值
- * @return LinearModel 训练得到的线性回归模型
- */
-LinearModel trainModelWithHoldout(double* x, double* y, int n, double* rmse_out) {
-    *rmse_out = 0.0;
-    
-    if (n < 5) {
-        LinearModel model = {0.0, 0.0, 0.0};
-        return model;
-    }
-
-    int train_size = (int)(n * 0.8);
-    int test_size = n - train_size;
-
-    double* train_x = (double*)malloc(train_size * sizeof(double));
-    double* train_y = (double*)malloc(train_size * sizeof(double));
-    double* test_x = (double*)malloc(test_size * sizeof(double));
-    double* test_y = (double*)malloc(test_size * sizeof(double));
-    double* test_pred = (double*)malloc(test_size * sizeof(double));
-
-    int train_idx = 0, test_idx = 0;
-    for (int i = 0; i < n; i++) {
-        if (isValidDouble(x[i]) && isValidDouble(y[i])) {
-            if (i < train_size) {
-                train_x[train_idx] = x[i];
-                train_y[train_idx] = y[i];
-                train_idx++;
-            } else {
-                test_x[test_idx] = x[i];
-                test_y[test_idx] = y[i];
-                test_idx++;
-            }
-        }
-    }
-
-    LinearModel model = linearRegression(train_x, train_y, train_idx);
-
-    for (int i = 0; i < test_idx; i++) {
-        test_pred[i] = predict(model, test_x[i]);
-    }
-
-    *rmse_out = calculateRMSE(test_y, test_pred, test_idx);
-
-    free(train_x);
-    free(train_y);
-    free(test_x);
-    free(test_y);
-    free(test_pred);
-
-    return model;
-}
-
-/**
  * @brief 分析指定因子与溶解氧(DO)的线性关系
  * 
  * 内部辅助函数，根据因子类型提取对应数据，执行线性回归分析。
@@ -401,12 +340,20 @@ LinearModel evaluateFactorDOWithHoldout(const WaterQualityRecords* records,
         }
     }
 
-    LinearModel model = trainModelWithHoldout(train_x, train_y, train_idx, rmse_out);
+    LinearModel model = linearRegression(train_x, train_y, train_idx);
+
+    double* test_pred = (double*)malloc(test_idx * sizeof(double));
+    for (int i = 0; i < test_idx; i++) {
+        test_pred[i] = predict(model, test_x[i]);
+    }
+
+    *rmse_out = calculateRMSE(test_y, test_pred, test_idx);
 
     free(train_x);
     free(train_y);
     free(test_x);
     free(test_y);
+    free(test_pred);
 
     return model;
 }
