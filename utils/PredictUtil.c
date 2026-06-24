@@ -8,9 +8,6 @@
  * - 决定系数(R2)评估
  * - 留出法评估（基于均方根误差RMSE）
  * - 多因子影响对比分析（气温、水温、pH值、盐度与溶解氧的关系）
- * 
- * @author Auto Generated
- * @date 2026-05-19
  */
 
 #include "PredictUtil.h"
@@ -111,46 +108,6 @@ LinearModel linearRegression(double* x, double* y, int n) {
  */
 double predict(LinearModel model, double x) {
     return model.slope * x + model.intercept;
-}
-
-/**
- * @brief 计算决定系数R2
- * 
- * R2值越接近1，说明模型对历史数据的拟合效果越好，预测可靠性越高。
- * 
- * 计算公式: R2 = 1 - Σ(y_i - ŷ_i)² / Σ(y_i - ȳ)²
- * 其中: y_i为真实值, ŷ_i为预测值, ȳ为真实值的均值
- * 
- * @param y_true 真实值数组
- * @param y_pred 预测值数组
- * @param n 数据点数量
- * @return double 决定系数R2值
- */
-double calculateRSquared(double* y_true, double* y_pred, int n) {
-    if (n < 2) return 0.0;
-
-    double mean_y = 0.0;
-    int valid_count = 0;
-    for (int i = 0; i < n; i++) {
-        if (isValidDouble(y_true[i]) && isValidDouble(y_pred[i])) {
-            mean_y += y_true[i];
-            valid_count++;
-        }
-    }
-
-    if (valid_count < 2) return 0.0;
-    mean_y /= valid_count;
-
-    double ss_tot = 0.0, ss_res = 0.0;
-    for (int i = 0; i < n; i++) {
-        if (isValidDouble(y_true[i]) && isValidDouble(y_pred[i])) {
-            ss_res += (y_true[i] - y_pred[i]) * (y_true[i] - y_pred[i]);
-            ss_tot += (y_true[i] - mean_y) * (y_true[i] - mean_y);
-        }
-    }
-
-    if (ss_tot < 1e-10) return 0.0;
-    return 1.0 - ss_res / ss_tot;
 }
 
 /**
@@ -384,4 +341,72 @@ void compareFactorsImpact(const WaterQualityRecords* records) {
 
     printf("\n结论: %s对溶解氧(DO)的影响程度最大，R2值为%.4f\n", 
            factors[0].name, factors[0].model.r_squared);
+}
+
+/**
+ * @brief 使用留出法评估指定因子与溶解氧的预测模型
+ *
+ * 从水质数据集中提取指定因子的数据，按顺序将前80%作为训练集，
+ * 后20%作为测试集，训练模型并计算RMSE。
+ *
+ * @param records 水质数据集
+ * @param factor_type 因子类型: 0-气温, 1-水温, 2-pH值, 3-盐度
+ * @param rmse_out 输出参数，用于返回测试集的RMSE值
+ * @return LinearModel 训练得到的线性回归模型
+ */
+LinearModel evaluateFactorDOWithHoldout(const WaterQualityRecords* records, 
+                                       int factor_type, double* rmse_out) {
+    *rmse_out = 0.0;
+    
+    if (!records || records->count < 5) {
+        LinearModel model = {0.0, 0.0, 0.0};
+        return model;
+    }
+
+    int train_size = (int)(records->count * 0.8);
+    int test_size = records->count - train_size;
+    
+    double* train_x = (double*)malloc(train_size * sizeof(double));
+    double* train_y = (double*)malloc(train_size * sizeof(double));
+    double* test_x = (double*)malloc(test_size * sizeof(double));
+    double* test_y = (double*)malloc(test_size * sizeof(double));
+
+    int train_idx = 0, test_idx = 0;
+    
+    for (int i = 0; i < records->count; i++) {
+        const WaterQualityRecord* record = WQ_GetRecord(records, i);
+        if (!record) continue;
+
+        double factor_value;
+        switch (factor_type) {
+            case 0: factor_value = (double)record->Air_temp; break;
+            case 1: factor_value = (double)record->Temp; break;
+            case 2: factor_value = (double)record->pH; break;
+            case 3: factor_value = (double)record->Salinity; break;
+            default: factor_value = 0.0;
+        }
+
+        double do_value = (double)record->DO;
+        
+        if (isValidDouble(factor_value) && isValidDouble(do_value)) {
+            if (i < train_size) {
+                train_x[train_idx] = factor_value;
+                train_y[train_idx] = do_value;
+                train_idx++;
+            } else {
+                test_x[test_idx] = factor_value;
+                test_y[test_idx] = do_value;
+                test_idx++;
+            }
+        }
+    }
+
+    LinearModel model = trainModelWithHoldout(train_x, train_y, train_idx, rmse_out);
+
+    free(train_x);
+    free(train_y);
+    free(test_x);
+    free(test_y);
+
+    return model;
 }

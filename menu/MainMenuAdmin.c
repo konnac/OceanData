@@ -1117,6 +1117,37 @@ static void predictDOValue(void) {
 }
 
 /**
+ * @brief 使用留出法评估模型
+ */
+static void evaluateWithHoldout(void) {
+    int factorChoice;
+    const char* factorNames[] = {"气温", "水温", "pH", "盐度"};
+    const char* varNames[] = {"Air_temp", "Temp", "pH", "Salinity"};
+
+    printf("\n选择评估因子：1-气温 2-水温 3-pH 4-盐度\n");
+    if (!readInt("请选择: ", &factorChoice) || factorChoice < 1 || factorChoice > 4) {
+        printf("[错误] 无效选择\n");
+        return;
+    }
+
+    double rmse;
+    LinearModel model = evaluateFactorDOWithHoldout(&g_records, factorChoice - 1, &rmse);
+    const char* name = factorNames[factorChoice - 1];
+    const char* varName = varNames[factorChoice - 1];
+
+    int train_count = (int)(g_records.count * 0.8);
+    int test_count = g_records.count - train_count;
+
+    printf("\n========== 留出法评估结果 ==========\n");
+    printf("因子: %s -> 溶解氧(DO)\n", name);
+    printf("训练集样本: %d, 测试集样本: %d\n", train_count, test_count);
+    printf("回归方程: DO = %.4f * %s + %.4f\n", model.slope, varName, model.intercept);
+    printf("R2值: %.4f\n", model.r_squared);
+    printf("测试集RMSE: %.4f\n", rmse);
+    printf("====================================\n");
+}
+
+/**
  * @brief 预测分析子菜单
  *
  * 提供单因子回归分析和多因子对比分析
@@ -1136,6 +1167,7 @@ static void predictionAnalysis(void) {
         printf("  [4] 盐度 -> 溶解氧回归分析\n");
         printf("  [5] 多因子影响程度对比\n");
         printf("  [6] 输入因子预测溶解氧\n");
+        printf("  [7] 留出法模型评估\n");
         printf("  [0] 返回上级菜单\n");
         printf("=============================\n");
 
@@ -1155,6 +1187,9 @@ static void predictionAnalysis(void) {
                 break;
             case 6:
                 predictDOValue();
+                break;
+            case 7:
+                evaluateWithHoldout();
                 break;
             case 0:
                 return;

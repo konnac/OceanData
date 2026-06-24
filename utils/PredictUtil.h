@@ -53,16 +53,6 @@ double predict(LinearModel model, double x);
  * @param n 数据点数量
  * @return double 决定系数R2值
  */
-double calculateRSquared(double* y_true, double* y_pred, int n);
-
-/**
- * @brief 计算均方根误差RMSE
- * 
- * @param y_true 真实值数组
- * @param y_pred 预测值数组
- * @param n 数据点数量
- * @return double 均方根误差RMSE值
- */
 double calculateRMSE(double* y_true, double* y_pred, int n);
 
 /**
@@ -109,8 +99,19 @@ LinearModel analyzePhDO(const WaterQualityRecords* records);
 LinearModel analyzeSalinityDO(const WaterQualityRecords* records);
 
 /**
+ * @brief 使用留出法评估指定因子与溶解氧的预测模型
+ *
+ * @param records 水质数据集
+ * @param factor_type 因子类型: 0-气温, 1-水温, 2-pH值, 3-盐度
+ * @param rmse_out 输出参数，用于返回测试集的RMSE值
+ * @return LinearModel 训练得到的线性回归模型
+ */
+LinearModel evaluateFactorDOWithHoldout(const WaterQualityRecords* records, 
+                                       int factor_type, double* rmse_out);
+
+/**
  * @brief 对比分析各环境因子对溶解氧(DO)的影响程度
- * 
+ *
  * @param records 水质数据集
  */
 void compareFactorsImpact(const WaterQualityRecords* records);
